@@ -86,6 +86,59 @@ Combined with pCASL CBF: CMRO₂(regional) = CBF(regional) × OEF(regional) × C
 
 This replaces the limitation of TRUST (global OEF only) with per-voxel OEF.
 
+### Cortical Layer-Resolved Physiology (LAYNII)
+
+WAND ses-06 structural data is **sub-millimeter** (0.67-0.7mm isotropic) — sufficient for cortical depth analysis (~2-3 layers across the ~2.5mm cortical ribbon). Combined with LAYNII or Nighres:
+
+```
+vpjax/
+├── layers/                 # Cortical depth-resolved physiology
+│   ├── layering.py         # Equivolume layer definition (LAYNII/Nighres interface)
+│   ├── profiles.py         # Depth-dependent sampling of any volumetric map
+│   ├── iron_myelin.py      # Separate iron (paramagnetic) from myelin (diamagnetic)
+│   └── layer_nvc.py        # Layer-specific neurovascular coupling
+│                             (feedforward=deep layers, feedback=superficial)
+```
+
+**What WAND provides per cortical layer:**
+
+| Map | From | Measures at each depth |
+|---|---|---|
+| Quantitative T1 | MP2RAGE (0.7mm) | Myelination gradient |
+| R2* | MEGRE magnitude (0.67mm) | Combined iron + myelin |
+| QSM | MEGRE **phase** (0.67mm, currently unused!) | Iron (+) vs myelin (−) separated |
+| BPF | QMT (ses-02, lower res) | Direct myelin content |
+| T1w/T2w ratio | ses-03 | Myelin proxy — validate per layer vs QMT |
+
+**Iron-myelin separation per layer** from R2* + QSM + BPF is the killer application — no single contrast can do this alone.
+
+**Connection to vpjax:** Layer-specific neurovascular coupling parameters differ between superficial cortex (feedback connections, layer I-III) and deep cortex (feedforward, layer V-VI). This maps directly onto Valdes-Sosa's ξ-αNET feedforward/feedback hierarchy and the geodesic cortical flow directions from Liu et al. 2026.
+
+### VASO (planned, for CBV measurement)
+
+```
+vpjax/
+├── vaso/                   # VAscular Space Occupancy
+│   ├── signal_model.py     # SS-SI-VASO signal: S ∝ (1 - CBV)
+│   ├── boco.py             # BOLD contamination correction
+│   ├── devein.py           # Ascending vein removal (layer-specific)
+│   └── cbv_mapping.py      # ΔCBV/CBV₀ estimation
+```
+
+VASO measures **cerebral blood volume (CBV)** directly — the missing Balloon-Windkessel state variable. WAND does not currently have VASO, but if added:
+
+```
+Complete Balloon-Windkessel observation:
+  s (vasodilatory signal) → inferred from model
+  f (CBF)                 → pCASL ✓
+  v (CBV)                 → VASO (planned)
+  q (deoxy-Hb content)    → qBOLD ✓
+
+With VASO: zero free hemodynamic parameters — all observables measured.
+```
+
+**LAYNII** (Huber et al. 2021) provides VASO-specific processing: `LN_BOCO` (BOLD correction), `LN2_DEVEIN` (ascending vein removal), `LN_LEAKY_LAYERS` (inter-layer leakage model). Processing tools in LAYNII or via Neurodesk container.
+
 ## Key Innovation
 
 **Every variable in the model has an independent measurement** (using the WAND dataset):
@@ -107,6 +160,37 @@ This replaces the limitation of TRUST (global OEF only) with per-voxel OEF.
 - JAX
 - vbjax (neural mass models)
 - jaxtyping, equinox (optional, for typed modules)
+
+### QSM Pipeline (from WAND phase data)
+
+The 7-echo GRE **phase** data (`*_part-phase_MEGRE.nii.gz`) in ses-06 is currently unused — it enables **Quantitative Susceptibility Mapping (QSM)**:
+
+```
+Multi-echo GRE phase data
+  → Phase unwrapping (ROMEO / Laplacian)
+  → Background field removal (V-SHARP / PDF / LBV)
+  → Dipole inversion (TKD / MEDI / TGV-QSM / STAR-QSM)
+  → Susceptibility map (χ in ppm)
+```
+
+**QSM tools (via Neurodesk):**
+
+| Tool | Language | Method | Install |
+|---|---|---|---|
+| **QSMxT** | Python/Nextflow | Automated BIDS pipeline, multiple algorithms | Neurodesk `qsmxt` |
+| **SEPIA** | MATLAB | Comprehensive, GUI + scripting | Neurodesk |
+| **ROMEO** | Julia | Fast phase unwrapping (Dymerska et al.) | Neurodesk |
+| **TGV-QSM** | Python | Total generalized variation regularization | Neurodesk |
+| **MEDI** | MATLAB | Morphology-enabled dipole inversion (Cornell) | Neurodesk |
+| **STI Suite** | MATLAB | Susceptibility tensor imaging (Stanford) | Manual |
+
+**QSMxT** is recommended — it's BIDS-aware, runs the full pipeline automatically, and is in Neurodesk. Produces susceptibility maps in the same space as the magnitude T2* maps.
+
+**Why QSM matters for vpjax:**
+- Susceptibility χ = χ_iron (paramagnetic, +) + χ_myelin (diamagnetic, −)
+- Combined with R2* and QMT BPF → full iron/myelin decomposition per voxel
+- Layer-resolved QSM (via LAYNII) → iron/myelin per cortical depth
+- Iron content in basal ganglia changes with age → connects to the Valdes-Sosa lifespan model
 
 ## The CMRO₂ Hierarchy
 
