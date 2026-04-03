@@ -29,6 +29,8 @@ from vpjax import qbold
 from vpjax import vascular
 from vpjax import layers
 from vpjax import integrators
+from vpjax import vaso
+from vpjax import qsm
 
 __all__ = [
     # Types
@@ -55,4 +57,6 @@ __all__ = [
     "vascular",
     "layers",
     "integrators",
+    "vaso",
+    "qsm",
 ]
