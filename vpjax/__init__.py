@@ -31,6 +31,7 @@ from vpjax import layers
 from vpjax import integrators
 from vpjax import vaso
 from vpjax import qsm
+from vpjax import cardiac
 
 __all__ = [
     # Types
@@ -59,4 +60,5 @@ __all__ = [
     "integrators",
     "vaso",
     "qsm",
+    "cardiac",
 ]
