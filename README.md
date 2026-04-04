@@ -37,7 +37,8 @@ vpjax/
 ├── hemodynamics/       # Balloon-Windkessel → extended Riera model
 │   ├── balloon.py      # Standard B-W (from vbjax, reference)
 │   ├── riera.py        # Full neurovascular coupling (Riera 2006/2007)
-│   └── bold.py         # T2* forward model (multi-echo aware)
+│   ├── bold.py         # T2* forward model (multi-echo aware)
+│   └── optics.py       # Optical properties for fNIRS/DOT (dot-jax interface)
 │
 ├── metabolism/          # Neural activity → metabolic demand
 │   ├── cmro2.py        # CMRO₂ from neural activity
@@ -45,12 +46,14 @@ vpjax/
 │   └── fick.py         # Fick's principle: CMRO₂ = CBF × OEF × CaO₂
 │
 ├── vascular/           # Blood vessel models
-│   ├── compliance.py   # Vessel compliance (pressure-volume)
-│   ├── autoregulation.py # Cerebral autoregulation
-│   └── geometry.py     # Vascular tree from angiography
+│   ├── compliance.py   # Vessel compliance (pressure-volume, Grubb)
+│   ├── autoregulation.py # Cerebral autoregulation (Lassen curve)
+│   └── geometry.py     # Vascular tree morphometry
 │
 ├── perfusion/          # ASL forward/inverse models
-│   ├── kinetic.py      # Buxton general kinetic model (ASL signal)
+│   ├── asl.py          # Simple ASL observation (CBF change)
+│   ├── vaso.py         # Simple VASO observation (CBV change)
+│   ├── kinetic.py      # Buxton general kinetic model (pCASL signal)
 │   ├── trust.py        # TRUST: venous T2 → SvO₂ (Lu 2008)
 │   └── calibration.py  # M0, blood T1 calibration
 │
@@ -58,11 +61,29 @@ vpjax/
 │   ├── signal_model.py # Multi-echo GRE signal: S(TE) = f(OEF, DBV, R2, S0)
 │   ├── oef_mapping.py  # Per-voxel OEF from multi-echo data
 │   ├── dbv.py          # Deoxygenated blood volume estimation
-│   └── calibrated.py   # Gas-free calibrated BOLD (Bulte)
+│   └── calibrated.py   # Gas-free calibrated BOLD (Bulte/Davis)
 │
-├── integrators/        # SDE integration methods
+├── qsm/                # Quantitative Susceptibility Mapping
+│   ├── susceptibility.py # χ from iron, myelin, blood oxygenation
+│   ├── r2star_fitting.py # R2* from multi-echo GRE magnitude
+│   └── phase.py        # Multi-echo phase combination & frequency mapping
+│
+├── vaso/               # VAscular Space Occupancy (CBV measurement)
+│   ├── signal_model.py # SS-SI-VASO signal: S ∝ (1 - CBV)
+│   ├── boco.py         # BOLD contamination correction
+│   ├── devein.py       # Ascending vein removal (layer-specific)
+│   └── cbv_mapping.py  # ΔCBV/CBV₀ estimation
+│
+├── layers/             # Cortical depth-resolved physiology
+│   ├── layering.py     # Equivolume layer definition (LAYNII/Nighres)
+│   ├── profiles.py     # Depth-dependent sampling of volumetric maps
+│   ├── iron_myelin.py  # Iron/myelin separation (R2* + QSM + BPF)
+│   └── layer_nvc.py    # Layer-specific neurovascular coupling
+│
+├── integrators/        # ODE integration methods
 │   └── local_linearization.py  # LL filter (Riera/Ozaki)
 │
+├── presets.py          # 3T/7T parameter bundles & pipeline helpers
 └── tests/
 ```
 

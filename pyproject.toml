@@ -13,8 +13,8 @@ authors = [
     { name = "Morgan G Hough" },
 ]
 dependencies = [
-    "jax>=0.4.20",
-    "jaxlib>=0.4.20",
+    "jax>=0.4.20,<0.5",
+    "jaxlib>=0.4.20,<0.5",
     "equinox>=0.11.0",
     "diffrax>=0.6.0",
     "jaxtyping>=0.2.20",
@@ -32,3 +32,6 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["vpjax/tests"]
+
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
