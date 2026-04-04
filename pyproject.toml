@@ -25,9 +25,15 @@ full = [
     "lineax>=0.0.4",
     "optimistix>=0.0.6",
 ]
+angiography = [
+    "scikit-image>=0.20",
+    "scipy>=1.10",
+]
 dev = [
     "pytest>=7.0",
     "pytest-xdist",
+    "scikit-image>=0.20",
+    "scipy>=1.10",
 ]
 
 [tool.pytest.ini_options]
