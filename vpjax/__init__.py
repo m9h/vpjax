@@ -33,6 +33,7 @@ from vpjax import vaso
 from vpjax import qsm
 from vpjax import cardiac
 from vpjax import sleep
+from vpjax import brainstem
 
 __all__ = [
     # Types
@@ -63,4 +64,5 @@ __all__ = [
     "qsm",
     "cardiac",
     "sleep",
+    "brainstem",
 ]
