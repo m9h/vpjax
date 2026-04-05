@@ -324,3 +324,69 @@ def predict_bold_spectrum_for_stage(
         predicted = predicted / total
 
     return jnp.array(predicted)
+
+
+def predict_bold_spectrum_with_vasomotion(
+    stage_label: str,
+    freqs: np.ndarray,
+    tr: float,
+) -> Float[Array, "F"]:
+    """Predict BOLD spectrum including vasomotion (~0.02 Hz) component.
+
+    Combines the Balloon transfer function with the NE-driven slow
+    vasomotion that appears during NREM sleep.
+
+    Parameters
+    ----------
+    stage_label : 'W', '1', '2', '3', or 'R'
+    freqs : frequency axis (Hz)
+    tr : repetition time (s)
+
+    Returns
+    -------
+    Predicted BOLD power spectrum (normalized)
+    """
+    from vpjax.sleep.nvc_state import WAKE, N1, N2, N3, REM
+    from vpjax.sleep.vasomotion import VasomotionParams, bold_vasomotion
+
+    # Balloon component (existing)
+    balloon_spec = np.array(predict_bold_spectrum_for_stage(stage_label, freqs, tr))
+
+    # Vasomotion amplitude per stage (minimal wake, strong N3)
+    stage_map = {"W": WAKE, "1": N1, "2": N2, "3": N3, "R": REM}
+    stage = stage_map.get(stage_label, WAKE)
+
+    vasomotion_amplitudes = {
+        WAKE: 0.002,
+        N1: 0.010,
+        N2: 0.020,
+        N3: 0.035,
+        REM: 0.005,
+    }
+    amp = vasomotion_amplitudes.get(stage, 0.002)
+
+    # Generate vasomotion BOLD signal and compute its PSD
+    params = VasomotionParams(cbv_amplitude=jnp.array(amp))
+    dt_sim = 0.1
+    t_sim = jnp.arange(0, 600, dt_sim)  # 10 min simulation
+    bold_vaso = np.array(bold_vasomotion(t_sim, params))
+
+    n_fft = max(len(bold_vaso), 4096)
+    vaso_spec = np.abs(np.fft.rfft(bold_vaso, n=n_fft)) ** 2
+    f_vaso = np.fft.rfftfreq(n_fft, d=dt_sim)
+    vaso_interp = np.interp(freqs, f_vaso, vaso_spec)
+
+    # Normalize vasomotion component
+    vaso_total = np.sum(vaso_interp)
+    if vaso_total > 0:
+        vaso_interp = vaso_interp / vaso_total
+
+    # Combine: balloon + vasomotion (weighted)
+    combined = balloon_spec + amp * 10.0 * vaso_interp
+
+    # Renormalize
+    total = np.sum(combined)
+    if total > 0:
+        combined = combined / total
+
+    return jnp.array(combined)
