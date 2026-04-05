@@ -139,3 +139,72 @@ def bold_vasomotion(
     cbv = cbv_vasomotion(t, params)
     bold = params.V0 * params.bold_sensitivity * (cbv - 1.0)
     return bold - jnp.mean(bold)
+
+
+def ne_sawtooth_oscillation(
+    t: Float[Array, "T"],
+    params: VasomotionParams | None = None,
+) -> Float[Array, "T"]:
+    """Asymmetric NE oscillation: sharp drops, slow recovery.
+
+    The Hauglund et al. (2025) Cell paper shows NE during NREM has
+    a sawtooth-like waveform: slow buildup then rapid drop, not
+    a symmetric sine wave.
+
+    Modeled as a skewed periodic function:
+        NE(t) = amplitude × (2/π) × arctan(k × sin(2π·f·t) / cos(2π·f·t))
+
+    where k controls the asymmetry (k>1 → sharp drops).
+
+    Parameters
+    ----------
+    t : time points (s)
+    params : VasomotionParams
+
+    Returns
+    -------
+    NE level (a.u., zero-mean, asymmetric oscillation)
+    """
+    if params is None:
+        params = VasomotionParams()
+
+    phase = 2.0 * jnp.pi * params.ne_frequency * t
+
+    # Asymmetric waveform: slow exponential rise, fast linear drop
+    # Normalized phase within each cycle: phi in [0, 1)
+    period = 1.0 / params.ne_frequency
+    phi = (t % period) / period  # [0, 1)
+
+    # Rise phase (0 to 0.8): slow linear recovery
+    # Drop phase (0.8 to 1.0): fast steep drop
+    rise_end = 0.8
+    rise = phi / rise_end
+    drop = 1.0 - ((phi - rise_end) / (1.0 - rise_end)) ** 0.5
+
+    saw = jnp.where(phi < rise_end, rise, drop)
+    # Center around zero
+    saw = saw - jnp.mean(saw)
+    # Normalize
+    max_abs = jnp.max(jnp.abs(saw)) + 1e-8
+    return params.ne_amplitude * saw / max_abs
+
+
+def cbv_from_ne(
+    ne: Float[Array, "T"],
+    compliance: float = 0.03,
+) -> Float[Array, "T"]:
+    """Convert NE time course to CBV via vascular compliance.
+
+    NE increase → arteriolar smooth muscle contraction → CBV decrease.
+    CBV/CBV₀ = 1 - compliance × NE
+
+    Parameters
+    ----------
+    ne : norepinephrine level (a.u.)
+    compliance : CBV sensitivity to NE (fractional CBV change per unit NE)
+
+    Returns
+    -------
+    CBV/CBV₀ (oscillates around 1.0)
+    """
+    return 1.0 - compliance * ne

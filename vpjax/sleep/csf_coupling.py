@@ -161,6 +161,40 @@ def glymphatic_clearance(
     return clearance
 
 
+def csf_bold_contribution(
+    cbv: Float[Array, "T"],
+    t: Float[Array, "T"],
+    params: CSFParams | None = None,
+    bold_sensitivity: float = 0.1,
+) -> Float[Array, "T"]:
+    """Compute CSF-related BOLD signal contribution.
+
+    CSF displacement from vasomotion creates signal changes in
+    voxels near ventricles and the cortical surface. This appears
+    in the global mean BOLD during N3.
+
+    BOLD_csf ∝ |CSF_flow| × sensitivity
+
+    Parameters
+    ----------
+    cbv : CBV/CBV₀ time series
+    t : time points (s)
+    params : CSFParams
+    bold_sensitivity : BOLD signal per unit CSF flow
+
+    Returns
+    -------
+    CSF-related BOLD contribution (zero-mean)
+    """
+    if params is None:
+        params = CSFParams()
+
+    csf = csf_flow_from_cbv(cbv, params)
+    # CSF flow creates BOLD signal change (partial volume, inflow effects)
+    bold_csf = bold_sensitivity * csf
+    return bold_csf - jnp.mean(bold_csf)
+
+
 # JAX lax.scan wrapper
 import jax
 

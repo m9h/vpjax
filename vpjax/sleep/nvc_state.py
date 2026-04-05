@@ -168,3 +168,31 @@ def riera_params_for_stage(stage: int) -> RieraParams:
         phi=base.phi * gain,
         tau_m=base.tau_m,
     )
+
+
+# HRF peak delay per stage (seconds)
+# Wake: standard ~5.5s, N3: delayed ~9s due to altered NVC
+_HRF_PEAK_TIME = {
+    WAKE: 5.5,
+    N1: 6.5,
+    N2: 7.5,
+    N3: 9.0,
+    REM: 5.8,
+}
+
+
+def hrf_peak_time(stage: int) -> float:
+    """Get the hemodynamic response peak time for a sleep stage.
+
+    In deeper NREM, the neurovascular coupling delay increases,
+    shifting the HRF peak from ~5.5s (wake) to ~9s (N3).
+
+    Parameters
+    ----------
+    stage : sleep stage (WAKE, N1, N2, N3, REM)
+
+    Returns
+    -------
+    HRF peak time in seconds
+    """
+    return _HRF_PEAK_TIME.get(stage, 5.5)
