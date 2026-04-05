@@ -29,11 +29,19 @@ angiography = [
     "scikit-image>=0.20",
     "scipy>=1.10",
 ]
+validation = [
+    "mne>=1.6",
+    "nibabel>=5.0",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
 dev = [
     "pytest>=7.0",
     "pytest-xdist",
     "scikit-image>=0.20",
     "scipy>=1.10",
+    "mne>=1.6",
+    "nibabel>=5.0",
 ]
 
 [tool.pytest.ini_options]
