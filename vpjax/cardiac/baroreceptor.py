@@ -162,3 +162,147 @@ def modulate_neural_drive(
     """
     exc = cortical_excitability(cardiac_phase, params)
     return neural_drive * exc
+
+
+# ---------------------------------------------------------------------------
+# Pulse-style baroreflex ODE model (Kitware Pulse methodology)
+# ---------------------------------------------------------------------------
+
+class BaroreflexParams(eqx.Module):
+    """Parameters for the Pulse-style baroreflex ODE model.
+
+    Sigmoid sympathetic/parasympathetic fractions with 4 effector ODEs.
+
+    Attributes
+    ----------
+    map_setpoint : mean arterial pressure setpoint (mmHg)
+    nu           : sigmoid steepness parameter
+    tau_hr       : HR adjustment time constant (s)
+    tau_resistance : resistance adjustment time constant (s)
+    tau_compliance : compliance adjustment time constant (s)
+    tau_elastance : elastance adjustment time constant (s)
+    hr_range     : [min_hr, max_hr] bpm
+    hr_baseline  : resting HR (bpm)
+
+    References
+    ----------
+    Kitware Pulse Physiology Engine, Nervous Methodology
+    """
+    map_setpoint: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(93.0))
+    nu: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(4.0))
+    tau_hr: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(2.0))
+    tau_resistance: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(5.0))
+    tau_compliance: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(10.0))
+    tau_elastance: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(3.0))
+    hr_baseline: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(72.0))
+    hr_sympathetic_max: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(180.0))
+    hr_parasympathetic_min: Float[Array, "..."] = eqx.field(default_factory=lambda: jnp.array(40.0))
+
+
+class BaroreflexState(eqx.Module):
+    """State of the baroreflex ODE.
+
+    Attributes
+    ----------
+    heart_rate  : current HR (bpm)
+    resistance  : systemic vascular resistance ratio (1.0 = baseline)
+    compliance  : venous compliance ratio (1.0 = baseline)
+    elastance   : cardiac elastance ratio (1.0 = baseline)
+    """
+    heart_rate: Float[Array, "..."]
+    resistance: Float[Array, "..."]
+    compliance: Float[Array, "..."]
+    elastance: Float[Array, "..."]
+
+    @staticmethod
+    def steady_state(shape: tuple[int, ...] = ()) -> BaroreflexState:
+        return BaroreflexState(
+            heart_rate=jnp.full(shape, 72.0),
+            resistance=jnp.ones(shape),
+            compliance=jnp.ones(shape),
+            elastance=jnp.ones(shape),
+        )
+
+
+def sympathetic_fraction(
+    map_pressure: Float[Array, "..."],
+    params: BaroreflexParams | None = None,
+) -> Float[Array, "..."]:
+    """Sympathetic response fraction (Pulse sigmoid model).
+
+    η_s(Pa) = [1 + (Pa / Pa_setpoint)^ν]^(-1)
+
+    High MAP → low sympathetic (vagal dominance).
+    """
+    if params is None:
+        params = BaroreflexParams()
+    ratio = map_pressure / params.map_setpoint
+    return 1.0 / (1.0 + jnp.power(ratio, params.nu))
+
+
+def parasympathetic_fraction(
+    map_pressure: Float[Array, "..."],
+    params: BaroreflexParams | None = None,
+) -> Float[Array, "..."]:
+    """Parasympathetic response fraction (Pulse sigmoid model).
+
+    η_p(Pa) = [1 + (Pa / Pa_setpoint)^(-ν)]^(-1)
+
+    High MAP → high parasympathetic.
+    """
+    if params is None:
+        params = BaroreflexParams()
+    ratio = map_pressure / params.map_setpoint
+    return 1.0 / (1.0 + jnp.power(ratio, -params.nu))
+
+
+class BaroreflexODE(eqx.Module):
+    """Baroreflex ODE: MAP → sympathetic/parasympathetic → CV adjustment.
+
+    Four effector ODEs driven by the sympathetic/parasympathetic balance:
+    - Heart rate: ↑sympathetic → ↑HR, ↑parasympathetic → ↓HR
+    - Resistance: ↑sympathetic → ↑resistance (vasoconstriction)
+    - Compliance: ↑sympathetic → ↓compliance (venoconstriction)
+    - Elastance: ↑sympathetic → ↑elastance (stronger contraction)
+    """
+
+    params: BaroreflexParams
+
+    def __call__(
+        self,
+        t: Float[Array, ""],
+        y: BaroreflexState,
+        args: Float[Array, "..."],
+    ) -> BaroreflexState:
+        """Evaluate RHS. args = current mean arterial pressure (mmHg)."""
+        map_pressure = args
+        p = self.params
+
+        eta_s = sympathetic_fraction(map_pressure, p)
+        eta_p = parasympathetic_fraction(map_pressure, p)
+
+        # Target values driven by autonomic balance
+        # Net autonomic drive: positive = sympathetic dominant, negative = parasympathetic
+        # At setpoint: eta_s ≈ eta_p ≈ 0.5 → net ≈ 0 → targets at baseline
+        net_sympathetic = eta_s - eta_p
+        hr_target = (
+            p.hr_baseline
+            + (p.hr_sympathetic_max - p.hr_baseline) * jnp.clip(net_sympathetic, 0.0, None)
+            + (p.hr_parasympathetic_min - p.hr_baseline) * jnp.clip(-net_sympathetic, 0.0, None)
+        )
+        resistance_target = 1.0 + 0.5 * net_sympathetic
+        compliance_target = 1.0 - 0.3 * net_sympathetic
+        elastance_target = 1.0 + 0.4 * net_sympathetic
+
+        # First-order approach to target
+        d_hr = (hr_target - y.heart_rate) / p.tau_hr
+        d_resistance = (resistance_target - y.resistance) / p.tau_resistance
+        d_compliance = (compliance_target - y.compliance) / p.tau_compliance
+        d_elastance = (elastance_target - y.elastance) / p.tau_elastance
+
+        return BaroreflexState(
+            heart_rate=d_hr,
+            resistance=d_resistance,
+            compliance=d_compliance,
+            elastance=d_elastance,
+        )
