@@ -13,8 +13,8 @@ authors = [
     { name = "Morgan G Hough" },
 ]
 dependencies = [
-    "jax>=0.4.20,<0.5",
-    "jaxlib>=0.4.20,<0.5",
+    "jax>=0.4.20",
+    "jaxlib>=0.4.20",
     "equinox>=0.11.0",
     "diffrax>=0.6.0",
     "jaxtyping>=0.2.20",
@@ -36,7 +36,7 @@ validation = [
     "matplotlib>=3.7",
 ]
 gpu = [
-    "jax[cuda12]>=0.4.20,<0.5",
+    "jax[cuda12]>=0.4.20; sys_platform == 'linux'",
 ]
 dev = [
     "pytest>=7.0",
