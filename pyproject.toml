@@ -35,6 +35,9 @@ validation = [
     "scipy>=1.10",
     "matplotlib>=3.7",
 ]
+gpu = [
+    "jax[cuda12]>=0.4.20,<0.5",
+]
 dev = [
     "pytest>=7.0",
     "pytest-xdist",
