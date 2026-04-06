@@ -36,7 +36,7 @@ validation = [
     "matplotlib>=3.7",
 ]
 gpu = [
-    "jax[cuda12]>=0.4.20; sys_platform == 'linux'",
+    "jax[cuda12]>=0.5; sys_platform == 'linux'",
 ]
 dev = [
     "pytest>=7.0",
@@ -51,4 +51,8 @@ dev = [
 testpaths = ["vpjax/tests"]
 
 [tool.uv]
-environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
