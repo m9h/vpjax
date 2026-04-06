@@ -22,6 +22,7 @@ from vpjax.validation.sleep_eeg_fmri import (
     bold_spectrum_by_stage,
     predict_bold_spectrum_for_stage,
     predict_bold_spectrum_with_vasomotion,
+    predict_bold_spectrum_full_model,
 )
 
 
@@ -97,6 +98,14 @@ def run_validation(
                     entry["r_vasomotion"] = float(r_v)
                     entry["p_vasomotion"] = float(p_v)
 
+                # Full model (LC + global waves + CSF)
+                pred_full = np.array(predict_bold_spectrum_full_model(stage_label, freqs, tr))
+                log_pred_full = np.log10(np.clip(pred_full, 1e-20, None))
+                if np.std(log_pred_full) > 1e-10:
+                    r_f, p_f = pearsonr(log_measured, log_pred_full)
+                    entry["r_full"] = float(r_f)
+                    entry["p_full"] = float(p_f)
+
             results.append(entry)
 
     return results
@@ -104,12 +113,13 @@ def run_validation(
 
 def print_results(results: list[dict]):
     """Print results as a formatted table."""
-    print(f"\n{'Run':<25} {'Stage':>5} {'N_vol':>6} {'r(Balloon)':>11} {'r(+Vaso)':>10}")
-    print("-" * 62)
+    print(f"\n{'Run':<25} {'Stage':>5} {'N_vol':>6} {'r(Balloon)':>11} {'r(+Vaso)':>10} {'r(Full)':>10}")
+    print("-" * 73)
     for r in results:
         r_vaso = f"{r.get('r_vasomotion', float('nan')):+.3f}" if 'r_vasomotion' in r else "   n/a"
+        r_full = f"{r.get('r_full', float('nan')):+.3f}" if 'r_full' in r else "   n/a"
         print(f"{r['run']:<25} {r['stage']:>5} {r['n_volumes']:>6} "
-              f"{r['r_balloon']:>+11.3f} {r_vaso:>10}")
+              f"{r['r_balloon']:>+11.3f} {r_vaso:>10} {r_full:>10}")
 
 
 def main():

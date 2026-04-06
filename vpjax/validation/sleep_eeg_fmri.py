@@ -390,3 +390,107 @@ def predict_bold_spectrum_with_vasomotion(
         combined = combined / total
 
     return jnp.array(combined)
+
+
+def predict_bold_spectrum_full_model(
+    stage_label: str,
+    freqs: np.ndarray,
+    tr: float,
+) -> Float[Array, "F"]:
+    """Predict BOLD spectrum using the full improved sleep model.
+
+    Combines all five N3-improved components:
+    1. Balloon transfer function with stage-dependent HRF delay
+    2. LC-driven sawtooth NE → vasomotion (~0.02 Hz)
+    3. Global BOLD waves (infraslow, spatially correlated)
+    4. CSF-BOLD contribution from vasomotion-driven displacement
+    5. Stage-dependent NVC gain
+
+    Parameters
+    ----------
+    stage_label : 'W', '1', '2', '3', or 'R'
+    freqs : frequency axis (Hz)
+    tr : repetition time (s)
+
+    Returns
+    -------
+    Predicted BOLD power spectrum (normalized)
+    """
+    from vpjax.sleep.nvc_state import (
+        WAKE, N1, N2, N3, REM,
+        balloon_params_for_stage, nvc_gain_for_stage, hrf_peak_time,
+    )
+    from vpjax.sleep.locus_coeruleus import lc_to_norepinephrine, LCParams
+    from vpjax.sleep.vasomotion import cbv_from_ne, VasomotionParams
+    from vpjax.sleep.global_waves import global_bold_wave
+    from vpjax.sleep.csf_coupling import csf_flow_from_cbv, csf_bold_contribution
+    from vpjax.hemodynamics.balloon import solve_balloon
+    from vpjax.hemodynamics.bold import observe_bold
+
+    stage_map = {"W": WAKE, "1": N1, "2": N2, "3": N3, "R": REM}
+    stage = stage_map.get(stage_label, WAKE)
+
+    params = balloon_params_for_stage(stage)
+    gain = nvc_gain_for_stage(stage)
+
+    # --- Component 1: Balloon impulse response with stage-dependent delay ---
+    # Adjust kappa to shift peak time (lower kappa → later peak)
+    dt = 0.1
+    n_pts = 600  # 60s
+    impulse = np.zeros(n_pts)
+    impulse[1:4] = gain
+
+    stim = jnp.array(impulse, dtype=jnp.float32)
+    _, traj = solve_balloon(params, stim, dt=dt)
+    bold_ir = np.array(observe_bold(traj))
+
+    n_fft = max(len(bold_ir), 4096)
+    H = np.abs(np.fft.rfft(bold_ir, n=n_fft)) ** 2
+    f_axis = np.fft.rfftfreq(n_fft, d=dt)
+    balloon_spec = np.interp(freqs, f_axis, H)
+
+    # --- Component 2: LC → NE (sawtooth) → vasomotion ---
+    t_sim = jnp.arange(0, 600, dt)  # 10 min
+    ne = np.array(lc_to_norepinephrine(t_sim, stage=stage))
+    cbv_vaso = np.array(cbv_from_ne(jnp.array(ne), compliance=0.03))
+    bold_vaso = 0.04 * 0.5 * (cbv_vaso - np.mean(cbv_vaso))  # V0 * sensitivity * ΔCBV
+
+    vaso_spec = np.abs(np.fft.rfft(bold_vaso, n=n_fft)) ** 2
+    vaso_interp = np.interp(freqs, f_axis, vaso_spec)
+
+    # --- Component 3: Global BOLD waves ---
+    global_sig = np.array(global_bold_wave(t_sim, stage=stage))
+    global_spec = np.abs(np.fft.rfft(global_sig, n=n_fft)) ** 2
+    global_interp = np.interp(freqs, f_axis, global_spec)
+
+    # --- Component 4: CSF-BOLD contribution ---
+    csf_bold = np.array(csf_bold_contribution(
+        jnp.array(cbv_vaso), t_sim, bold_sensitivity=0.5
+    ))
+    csf_spec = np.abs(np.fft.rfft(csf_bold, n=n_fft)) ** 2
+    csf_interp = np.interp(freqs, f_axis, csf_spec)
+
+    # --- Combine all components ---
+    # Weight by relative contribution (stronger vasomotion/global in N3)
+    depth_weights = {
+        WAKE: {"balloon": 1.0, "vaso": 0.05, "global": 0.05, "csf": 0.01},
+        N1:   {"balloon": 0.8, "vaso": 0.15, "global": 0.10, "csf": 0.03},
+        N2:   {"balloon": 0.6, "vaso": 0.25, "global": 0.20, "csf": 0.05},
+        N3:   {"balloon": 0.3, "vaso": 0.40, "global": 0.35, "csf": 0.10},
+        REM:  {"balloon": 0.9, "vaso": 0.05, "global": 0.05, "csf": 0.02},
+    }
+    w = depth_weights.get(stage, depth_weights[WAKE])
+
+    combined = (
+        w["balloon"] * balloon_spec
+        + w["vaso"] * vaso_interp
+        + w["global"] * global_interp
+        + w["csf"] * csf_interp
+    )
+
+    # Normalize
+    total = np.sum(combined)
+    if total > 0:
+        combined = combined / total
+
+    return jnp.array(combined)
