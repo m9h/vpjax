@@ -34,6 +34,7 @@ from vpjax import qsm
 from vpjax import cardiac
 from vpjax import sleep
 from vpjax import brainstem
+from vpjax import stochastic
 
 __all__ = [
     # Types
@@ -65,4 +66,5 @@ __all__ = [
     "cardiac",
     "sleep",
     "brainstem",
+    "stochastic",
 ]
