@@ -1,0 +1,667 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Sleep Physiology: State-Dependent Neurovascular Coupling" href="sleep_physiology.html"><link rel="prev" title="vpjax – Virtual Physiology in JAX" href="../index.html">
+
+    <!-- Generated with Sphinx 8.2.3 and Furo 2025.12.19 -->
+        <title>From Neural Activity to Multi-Modal Brain Signals - vpjax</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">vpjax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">vpjax</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">From Neural Activity to Multi-Modal Brain Signals</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sleep_physiology.html">Sleep Physiology: State-Dependent Neurovascular Coupling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="riera_nvc.html">Multi-Compartment Neurovascular Coupling (Riera Model)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cardiac_coupling.html">Heart-Brain Coupling: Vagal and Baroreceptor Models</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../reference/vpjax.html">vpjax package</a><input aria-label="Toggle navigation of vpjax package" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.brainstem.html">vpjax.brainstem package</a><input aria-label="Toggle navigation of vpjax.brainstem package" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.brainstem.atlas.html">vpjax.brainstem.atlas module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.brainstem.extract.html">vpjax.brainstem.extract module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.brainstem.ica_identify.html">vpjax.brainstem.ica_identify module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.cardiac.html">vpjax.cardiac package</a><input aria-label="Toggle navigation of vpjax.cardiac package" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.cardiac.baroreceptor.html">vpjax.cardiac.baroreceptor module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.cardiac.pulsatility.html">vpjax.cardiac.pulsatility module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.cardiac.vagal.html">vpjax.cardiac.vagal module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.hemodynamics.html">vpjax.hemodynamics package</a><input aria-label="Toggle navigation of vpjax.hemodynamics package" class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.hemodynamics.balloon.html">vpjax.hemodynamics.balloon module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.hemodynamics.bold.html">vpjax.hemodynamics.bold module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.hemodynamics.optics.html">vpjax.hemodynamics.optics module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.hemodynamics.riera.html">vpjax.hemodynamics.riera module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.integrators.html">vpjax.integrators package</a><input aria-label="Toggle navigation of vpjax.integrators package" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.integrators.local_linearization.html">vpjax.integrators.local_linearization module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.layers.html">vpjax.layers package</a><input aria-label="Toggle navigation of vpjax.layers package" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.layers.iron_myelin.html">vpjax.layers.iron_myelin module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.layers.layer_nvc.html">vpjax.layers.layer_nvc module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.layers.layering.html">vpjax.layers.layering module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.layers.profiles.html">vpjax.layers.profiles module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.metabolism.html">vpjax.metabolism package</a><input aria-label="Toggle navigation of vpjax.metabolism package" class="toctree-checkbox" id="toctree-checkbox-7" name="toctree-checkbox-7" role="switch" type="checkbox"/><label for="toctree-checkbox-7"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.metabolism.cmro2.html">vpjax.metabolism.cmro2 module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.metabolism.fick.html">vpjax.metabolism.fick module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.metabolism.oef.html">vpjax.metabolism.oef module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.perfusion.html">vpjax.perfusion package</a><input aria-label="Toggle navigation of vpjax.perfusion package" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.perfusion.asl.html">vpjax.perfusion.asl module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.perfusion.calibration.html">vpjax.perfusion.calibration module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.perfusion.kinetic.html">vpjax.perfusion.kinetic module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.perfusion.trust.html">vpjax.perfusion.trust module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.perfusion.vaso.html">vpjax.perfusion.vaso module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.qbold.html">vpjax.qbold package</a><input aria-label="Toggle navigation of vpjax.qbold package" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qbold.calibrated.html">vpjax.qbold.calibrated module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qbold.dbv.html">vpjax.qbold.dbv module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qbold.oef_mapping.html">vpjax.qbold.oef_mapping module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qbold.signal_model.html">vpjax.qbold.signal_model module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.qsm.html">vpjax.qsm package</a><input aria-label="Toggle navigation of vpjax.qsm package" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qsm.phase.html">vpjax.qsm.phase module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qsm.r2star_fitting.html">vpjax.qsm.r2star_fitting module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.qsm.susceptibility.html">vpjax.qsm.susceptibility module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.sleep.html">vpjax.sleep package</a><input aria-label="Toggle navigation of vpjax.sleep package" class="toctree-checkbox" id="toctree-checkbox-11" name="toctree-checkbox-11" role="switch" type="checkbox"/><label for="toctree-checkbox-11"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.csf_coupling.html">vpjax.sleep.csf_coupling module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.global_waves.html">vpjax.sleep.global_waves module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.glymphatic.html">vpjax.sleep.glymphatic module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.locus_coeruleus.html">vpjax.sleep.locus_coeruleus module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.nvc_state.html">vpjax.sleep.nvc_state module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.sleep.vasomotion.html">vpjax.sleep.vasomotion module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.stochastic.html">vpjax.stochastic package</a><input aria-label="Toggle navigation of vpjax.stochastic package" class="toctree-checkbox" id="toctree-checkbox-12" name="toctree-checkbox-12" role="switch" type="checkbox"/><label for="toctree-checkbox-12"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.stochastic.fokker_planck.html">vpjax.stochastic.fokker_planck module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.stochastic.sde_balloon.html">vpjax.stochastic.sde_balloon module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.stochastic.sleep_transitions.html">vpjax.stochastic.sleep_transitions module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.tests.html">vpjax.tests package</a><input aria-label="Toggle navigation of vpjax.tests package" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_angiography.html">vpjax.tests.test_angiography module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_balloon.html">vpjax.tests.test_balloon module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_baroreceptor_ode.html">vpjax.tests.test_baroreceptor_ode module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_brainstem.html">vpjax.tests.test_brainstem module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_cardiac.html">vpjax.tests.test_cardiac module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_deep_sleep.html">vpjax.tests.test_deep_sleep module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_glymphatic.html">vpjax.tests.test_glymphatic module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_integration.html">vpjax.tests.test_integration module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_integrators.html">vpjax.tests.test_integrators module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_layers.html">vpjax.tests.test_layers module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_metabolism.html">vpjax.tests.test_metabolism module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_nvc_comparison.html">vpjax.tests.test_nvc_comparison module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_perfusion.html">vpjax.tests.test_perfusion module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_qbold.html">vpjax.tests.test_qbold module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_qsm.html">vpjax.tests.test_qsm module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_riera.html">vpjax.tests.test_riera module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_sleep.html">vpjax.tests.test_sleep module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_stochastic.html">vpjax.tests.test_stochastic module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_validation_cardiac.html">vpjax.tests.test_validation_cardiac module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_validation_sleep.html">vpjax.tests.test_validation_sleep module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_vascular.html">vpjax.tests.test_vascular module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.tests.test_vaso.html">vpjax.tests.test_vaso module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.validation.html">vpjax.validation package</a><input aria-label="Toggle navigation of vpjax.validation package" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.validation.cardiac_from_eeg.html">vpjax.validation.cardiac_from_eeg module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.validation.nvc_comparison.html">vpjax.validation.nvc_comparison module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.validation.run_all_sleep_runs.html">vpjax.validation.run_all_sleep_runs module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.validation.sleep_eeg_fmri.html">vpjax.validation.sleep_eeg_fmri module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.vascular.html">vpjax.vascular package</a><input aria-label="Toggle navigation of vpjax.vascular package" class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vascular.angiography.html">vpjax.vascular.angiography module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vascular.autoregulation.html">vpjax.vascular.autoregulation module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vascular.compliance.html">vpjax.vascular.compliance module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vascular.geometry.html">vpjax.vascular.geometry module</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/vpjax.vaso.html">vpjax.vaso package</a><input aria-label="Toggle navigation of vpjax.vaso package" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vaso.boco.html">vpjax.vaso.boco module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vaso.cbv_mapping.html">vpjax.vaso.cbv_mapping module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vaso.devein.html">vpjax.vaso.devein module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/vpjax.vaso.signal_model.html">vpjax.vaso.signal_model module</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../reference/vpjax.presets.html">vpjax.presets module</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="https://github.com/ins-amu/vpjax/blob/main/docs/tutorials/balloon_windkessel.md?plain=true" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div><div class="edit-this-page">
+  <a class="muted-link" href="https://github.com/ins-amu/vpjax/edit/main/docs/tutorials/balloon_windkessel.md" rel="edit" title="Edit this page">
+    <svg><use href="#svg-pencil"></use></svg>
+    <span class="visually-hidden">Edit this page</span>
+  </a>
+</div><div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section class="tex2jax_ignore mathjax_ignore" id="from-neural-activity-to-multi-modal-brain-signals">
+<h1>From Neural Activity to Multi-Modal Brain Signals<a class="headerlink" href="#from-neural-activity-to-multi-modal-brain-signals" title="Link to this heading">¶</a></h1>
+<p>This tutorial walks through the core vpjax pipeline: stimulating the
+Balloon-Windkessel hemodynamic model and observing the response through
+three complementary MRI modalities – BOLD, ASL, and VASO.</p>
+<section id="background">
+<h2>Background<a class="headerlink" href="#background" title="Link to this heading">¶</a></h2>
+<p>The Balloon-Windkessel model 
+describes how neural activity drives changes in cerebral blood flow and volume,
+which in turn determine the MRI signals we measure. The state vector is:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\mathbf{y} = \begin{pmatrix} s \\ f \\ v \\ q \end{pmatrix}
+\end{split}\]</div>
+</div>
+<p>where <span class="math notranslate nohighlight">\(s\)</span> is the vasodilatory signal, <span class="math notranslate nohighlight">\(f\)</span> is blood inflow (CBF), <span class="math notranslate nohighlight">\(v\)</span> is blood
+volume (CBV), and <span class="math notranslate nohighlight">\(q\)</span> is deoxyhemoglobin content.</p>
+<section id="the-ode">
+<h3>The ODE<a class="headerlink" href="#the-ode" title="Link to this heading">¶</a></h3>
+<p>The dynamics are governed by:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{aligned}
+\dot{s} &amp;= u - \kappa\, s - \gamma\,(f - 1) \\
+\dot{f} &amp;= s \\
+\tau\,\dot{v} &amp;= f - v^{1/\alpha} \\
+\tau\,\dot{q} &amp;= \frac{f\,E(f)}{E_0} - \frac{v^{1/\alpha}\,q}{v}
+\end{aligned}
+\end{split}\]</div>
+</div>
+<p>where <span class="math notranslate nohighlight">\(u(t)\)</span> is the neural stimulus, <span class="math notranslate nohighlight">\(\kappa\)</span> is the signal decay rate,
+<span class="math notranslate nohighlight">\(\gamma\)</span> is the flow-dependent elimination, <span class="math notranslate nohighlight">\(\tau\)</span> is the venous transit time,
+<span class="math notranslate nohighlight">\(\alpha\)</span> is the Grubb exponent, and <span class="math notranslate nohighlight">\(E(f) = 1 - (1-E_0)^{1/f}\)</span> is the
+flow-dependent oxygen extraction.</p>
+</section>
+</section>
+<section id="setting-up">
+<h2>Setting Up<a class="headerlink" href="#setting-up" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">vpjax._types</span><span class="w"> </span><span class="kn">import</span> <span class="n">BalloonParams</span><span class="p">,</span> <span class="n">BalloonState</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">vpjax.hemodynamics.balloon</span><span class="w"> </span><span class="kn">import</span> <span class="n">BalloonWindkessel</span><span class="p">,</span> <span class="n">solve_balloon</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">vpjax.hemodynamics.bold</span><span class="w"> </span><span class="kn">import</span> <span class="n">BOLDParams</span><span class="p">,</span> <span class="n">observe_bold</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">vpjax.perfusion.asl</span><span class="w"> </span><span class="kn">import</span> <span class="n">observe_asl</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">vpjax.perfusion.vaso</span><span class="w"> </span><span class="kn">import</span> <span class="n">observe_vaso</span>
+</pre></div>
+</div>
+</section>
+<section id="steady-state">
+<h2>Steady State<a class="headerlink" href="#steady-state" title="Link to this heading">¶</a></h2>
+<p>At rest (zero stimulus), all state variables sit at their baseline values:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">y0</span> <span class="o">=</span> <span class="n">BalloonState</span><span class="o">.</span><span class="n">steady_state</span><span class="p">()</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">y0</span><span class="o">.</span><span class="n">s</span><span class="p">)</span> <span class="o">==</span> <span class="mf">0.0</span>   <span class="c1"># no vasodilatory drive</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">y0</span><span class="o">.</span><span class="n">f</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span>   <span class="c1"># baseline flow</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">y0</span><span class="o">.</span><span class="n">v</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span>   <span class="c1"># baseline volume</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">y0</span><span class="o">.</span><span class="n">q</span><span class="p">)</span> <span class="o">==</span> <span class="mf">1.0</span>   <span class="c1"># baseline deoxyhemoglobin</span>
+
+<span class="c1"># The RHS should be zero at baseline</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">BalloonWindkessel</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="n">BalloonParams</span><span class="p">())</span>
+<span class="n">dy</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.0</span><span class="p">),</span> <span class="n">y0</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.0</span><span class="p">))</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">dy</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>All observation functions also return zero at rest – they report
+<em>changes</em> from baseline:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">observe_bold</span><span class="p">(</span><span class="n">y0</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">observe_asl</span><span class="p">(</span><span class="n">y0</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">observe_vaso</span><span class="p">(</span><span class="n">y0</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="simulating-a-block-stimulus">
+<h2>Simulating a Block Stimulus<a class="headerlink" href="#simulating-a-block-stimulus" title="Link to this heading">¶</a></h2>
+<p>Apply a 3-second block stimulus and integrate for 30 seconds:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dt</span> <span class="o">=</span> <span class="mf">0.01</span>
+<span class="n">T</span> <span class="o">=</span> <span class="mf">30.0</span>
+<span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">T</span> <span class="o">/</span> <span class="n">dt</span><span class="p">)</span>
+
+<span class="c1"># 3s block starting at t=1s</span>
+<span class="n">stim</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">dt</span><span class="p">):</span><span class="nb">int</span><span class="p">(</span><span class="mf">4.0</span> <span class="o">/</span> <span class="n">dt</span><span class="p">)]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="n">ts</span><span class="p">,</span> <span class="n">traj</span> <span class="o">=</span> <span class="n">solve_balloon</span><span class="p">(</span><span class="n">BalloonParams</span><span class="p">(),</span> <span class="n">stim</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">dt</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">solve_balloon</span></code> helper uses Diffrax’s Tsit5 solver internally,
+interpolating the stimulus as a piecewise-constant control signal.</p>
+</section>
+<section id="multi-modal-observations">
+<h2>Multi-Modal Observations<a class="headerlink" href="#multi-modal-observations" title="Link to this heading">¶</a></h2>
+<p>Now observe the hemodynamic trajectory through three MRI modalities:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">bold</span> <span class="o">=</span> <span class="n">observe_bold</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>   <span class="c1"># T2*-weighted: sensitive to dHb</span>
+<span class="n">asl</span> <span class="o">=</span> <span class="n">observe_asl</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>     <span class="c1"># Perfusion-weighted: sensitive to CBF</span>
+<span class="n">vaso</span> <span class="o">=</span> <span class="n">observe_vaso</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>   <span class="c1"># Volume-weighted: sensitive to CBV</span>
+</pre></div>
+</div>
+<section id="key-physiological-signatures">
+<h3>Key Physiological Signatures<a class="headerlink" href="#key-physiological-signatures" title="Link to this heading">¶</a></h3>
+<p><strong>BOLD</strong> shows a positive response (reduced deoxyhemoglobin concentration
+as increased flow washes out dHb):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">bold</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mf">0.001</span>
+</pre></div>
+</div>
+<p><strong>ASL</strong> shows a positive response (increased blood flow):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">asl</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mf">0.01</span>
+</pre></div>
+</div>
+<p><strong>VASO</strong> shows a <em>negative</em> response (increased blood volume reduces the
+available water signal):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">vaso</span><span class="p">))</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mf">0.001</span>
+</pre></div>
+</div>
+</section>
+<section id="hemodynamic-lag">
+<h3>Hemodynamic Lag<a class="headerlink" href="#hemodynamic-lag" title="Link to this heading">¶</a></h3>
+<p>A critical prediction of the Balloon model: BOLD peaks <em>after</em> ASL because
+BOLD depends on the slow venous volume and dHb dynamics, while ASL
+directly reflects blood flow:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">t_bold_peak</span> <span class="o">=</span> <span class="n">ts</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">bold</span><span class="p">)]</span>
+<span class="n">t_asl_peak</span> <span class="o">=</span> <span class="n">ts</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">asl</span><span class="p">)]</span>
+<span class="c1"># ASL peaks before (or at the same time as) BOLD</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">t_asl_peak</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="nb">float</span><span class="p">(</span><span class="n">t_bold_peak</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.0</span>
+</pre></div>
+</div>
+</section>
+<section id="return-to-baseline">
+<h3>Return to Baseline<a class="headerlink" href="#return-to-baseline" title="Link to this heading">¶</a></h3>
+<p>After the stimulus ends, all signals return to rest:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">bold</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mf">0.01</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">asl</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mf">0.01</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">vaso</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mf">0.01</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="differentiability">
+<h2>Differentiability<a class="headerlink" href="#differentiability" title="Link to this heading">¶</a></h2>
+<p>Because vpjax uses JAX and Equinox throughout, gradients flow through
+the entire pipeline. For example, compute the gradient of peak BOLD
+with respect to the signal decay rate <span class="math notranslate nohighlight">\(\kappa\)</span>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">peak_bold</span><span class="p">(</span><span class="n">kappa</span><span class="p">):</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">BalloonParams</span><span class="p">(</span><span class="n">kappa</span><span class="o">=</span><span class="n">kappa</span><span class="p">)</span>
+    <span class="n">dt</span> <span class="o">=</span> <span class="mf">0.05</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mf">20.0</span> <span class="o">/</span> <span class="n">dt</span><span class="p">)</span>
+    <span class="n">stim</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">dt</span><span class="p">):</span><span class="nb">int</span><span class="p">(</span><span class="mf">4.0</span> <span class="o">/</span> <span class="n">dt</span><span class="p">)]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">traj</span> <span class="o">=</span> <span class="n">solve_balloon</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">stim</span><span class="p">,</span> <span class="n">dt</span><span class="o">=</span><span class="n">dt</span><span class="p">)</span>
+    <span class="n">bold</span> <span class="o">=</span> <span class="n">observe_bold</span><span class="p">(</span><span class="n">traj</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">bold</span><span class="p">)</span>
+
+<span class="n">grad_fn</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">peak_bold</span><span class="p">)</span>
+<span class="n">g</span> <span class="o">=</span> <span class="n">grad_fn</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.65</span><span class="p">))</span>
+<span class="k">assert</span> <span class="n">jnp</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">g</span><span class="p">)</span>
+<span class="k">assert</span> <span class="nb">float</span><span class="p">(</span><span class="n">g</span><span class="p">)</span> <span class="o">!=</span> <span class="mf">0.0</span>
+</pre></div>
+</div>
+<p>This enables parameter estimation via gradient descent – fitting the
+hemodynamic model to measured BOLD/ASL/VASO data.</p>
+</section>
+<section id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Modality</p></th>
+<th class="head"><p>Observation function</p></th>
+<th class="head"><p>Sensitive to</p></th>
+<th class="head"><p>Sign during activation</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>BOLD</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">observe_bold()</span></code></p></td>
+<td><p>dHb (q, v)</p></td>
+<td><p>Positive</p></td>
+</tr>
+<tr class="row-odd"><td><p>ASL</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">observe_asl()</span></code></p></td>
+<td><p>CBF (f)</p></td>
+<td><p>Positive</p></td>
+</tr>
+<tr class="row-even"><td><p>VASO</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">observe_vaso()</span></code></p></td>
+<td><p>CBV (v)</p></td>
+<td><p>Negative</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The Balloon-Windkessel model provides the foundation for all of vpjax.
+The next tutorial extends this to the multi-compartment Riera model with
+explicit metabolic coupling.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>Buxton RB et al. (1998). Dynamics of blood flow and oxygenation changes during brain activation: the Balloon model. <em>MRM</em> 39:855-864.</p></li>
+<li><p>Friston KJ et al. (2000). Nonlinear responses in fMRI: the Balloon model, Volterra kernels, and other hemodynamics. <em>NeuroImage</em> 12:466-477.</p></li>
+<li><p>Stephan KJ et al. (2007). Comparing hemodynamic models with DCM. <em>NeuroImage</em> 38:387-401.</p></li>
+</ul>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="sleep_physiology.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Sleep Physiology: State-Dependent Neurovascular Coupling</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Home</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2024-2026, Morgan G Hough
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">From Neural Activity to Multi-Modal Brain Signals</a><ul>
+<li><a class="reference internal" href="#background">Background</a><ul>
+<li><a class="reference internal" href="#the-ode">The ODE</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#setting-up">Setting Up</a></li>
+<li><a class="reference internal" href="#steady-state">Steady State</a></li>
+<li><a class="reference internal" href="#simulating-a-block-stimulus">Simulating a Block Stimulus</a></li>
+<li><a class="reference internal" href="#multi-modal-observations">Multi-Modal Observations</a><ul>
+<li><a class="reference internal" href="#key-physiological-signatures">Key Physiological Signatures</a></li>
+<li><a class="reference internal" href="#hemodynamic-lag">Hemodynamic Lag</a></li>
+<li><a class="reference internal" href="#return-to-baseline">Return to Baseline</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#differentiability">Differentiability</a></li>
+<li><a class="reference internal" href="#summary">Summary</a></li>
+<li><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    </body>
+</html>

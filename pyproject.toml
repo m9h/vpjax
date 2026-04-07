@@ -45,6 +45,13 @@ dev = [
     "mne>=1.6",
     "nibabel>=5.0",
 ]
+doc = [
+    "sphinx>=7.0",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinx-autodoc-typehints",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["vpjax/tests"]
