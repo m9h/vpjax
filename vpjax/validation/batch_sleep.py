@@ -25,7 +25,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data" / "ds003768"
+_LOCAL_DATA = Path(__file__).parent.parent.parent / "data" / "ds003768"
+_DGX_DATA = Path("/data/raw/ds003768")
+DATA_DIR = _DGX_DATA if _DGX_DATA.exists() else _LOCAL_DATA
 
 
 def validate_subject(subject: int) -> list[dict] | None:

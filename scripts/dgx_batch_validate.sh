@@ -17,7 +17,7 @@ set -euo pipefail
 DGX="mhough@gx10-dgx-spark.local"
 DGX_DIR="/home/mhough/dev/vpjax"
 LOCAL_DATA="${HOME}/dev/vpjax/data/ds003768"
-DGX_DATA="${DGX_DIR}/data/ds003768"
+DGX_DATA="/data/raw/ds003768"
 
 START_SUB="${1:-1}"
 END_SUB="${2:-33}"
@@ -78,10 +78,6 @@ print(f'Saved to {out}')
     echo "    Fetching results..."
     scp -q "${DGX}:${DGX_DATA}/${sub}_validation_results.json" \
         "${LOCAL_DATA}/${sub}_validation_results.json" 2>/dev/null || true
-
-    # Clean up subject data on DGX to save disk
-    echo "    Cleaning ${sub} from DGX..."
-    ssh "${DGX}" "rm -rf ${DGX_DATA}/${sub}"
 
     echo "    Done with ${sub}"
 done
