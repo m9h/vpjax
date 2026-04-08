@@ -15,7 +15,15 @@ from vpjax._types import BalloonParams, BalloonState, HemodynamicState
 from vpjax.hemodynamics.balloon import BalloonWindkessel, solve_balloon
 from vpjax.hemodynamics.bold import BOLDParams, observe_bold
 from vpjax.hemodynamics.optics import to_optical_properties
-from vpjax.hemodynamics.riera import RieraNVC, RieraParams, RieraState
+from vpjax.hemodynamics.riera import RieraNVC, RieraParams, RieraState, solve_riera
+
+# Inverse problems
+from vpjax.hemodynamics.inversion import (
+    fit_balloon_bold,
+    fit_balloon_bold_batch,
+    fit_balloon_multimodal,
+    fit_riera_bold,
+)
 
 # Perfusion observers
 from vpjax.perfusion.asl import observe_asl
@@ -47,6 +55,12 @@ __all__ = [
     "RieraNVC",
     "RieraParams",
     "RieraState",
+    "solve_riera",
+    # Inverse problems
+    "fit_balloon_bold",
+    "fit_balloon_bold_batch",
+    "fit_balloon_multimodal",
+    "fit_riera_bold",
     # Observers
     "BOLDParams",
     "observe_bold",
