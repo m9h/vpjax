@@ -58,7 +58,7 @@ for SUB_DIR in "${WAND_DIR}"/sub-*; do
         --output="${LOG_DIR}/${SUB}_%j.out" \
         --error="${LOG_DIR}/${SUB}_%j.err" \
         --export=ALL,XLA_FLAGS="--xla_cpu_multi_thread_eigen=false",JAX_PLATFORMS=cpu \
-        --wrap="cd ${VPJAX_DIR} && python ${SCRIPT} --subject ${SUB} ${STAGE_ARG}"
+        --wrap="cd ${VPJAX_DIR} && ${HOME}/.local/bin/uv run python ${SCRIPT} --subject ${SUB} ${STAGE_ARG}"
 
     SUBMITTED=$((SUBMITTED + 1))
 done
