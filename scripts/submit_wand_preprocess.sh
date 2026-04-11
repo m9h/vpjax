@@ -102,7 +102,7 @@ for SUB_DIR in "${WAND_DIR}"/sub-*; do
         continue
     fi
 
-    VPJAX_CMD="cd ${VPJAX_DIR} && ${HOME}/.local/bin/uv run python ${PROCESS_SCRIPT} --subject ${SUB}"
+    VPJAX_CMD="cd ${VPJAX_DIR} && ${HOME}/.local/bin/uv run --extra validation python ${PROCESS_SCRIPT} --subject ${SUB}"
 
     DEPEND_ARG=""
     if [ -n "${PREPROC_JOBID}" ]; then
