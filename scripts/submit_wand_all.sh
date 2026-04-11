@@ -54,11 +54,11 @@ for SUB_DIR in "${WAND_DIR}"/sub-*; do
         --nice=100 \
         --cpus-per-task=2 \
         --mem=6G \
-        --time=4:00:00 \
+        --time=1:00:00 \
         --output="${LOG_DIR}/${SUB}_%j.out" \
         --error="${LOG_DIR}/${SUB}_%j.err" \
-        --export=ALL,XLA_FLAGS="--xla_cpu_multi_thread_eigen=false",JAX_PLATFORMS=cpu \
-        --wrap="cd ${VPJAX_DIR} && ${HOME}/.local/bin/uv run --extra validation python ${SCRIPT} --subject ${SUB} ${STAGE_ARG}"
+        --export=ALL,XLA_PYTHON_CLIENT_PREALLOCATE=false,XLA_PYTHON_CLIENT_MEM_FRACTION=0.20 \
+        --wrap="cd ${VPJAX_DIR} && ${HOME}/.local/bin/uv run --extra validation --extra gpu python ${SCRIPT} --subject ${SUB} ${STAGE_ARG}"
 
     SUBMITTED=$((SUBMITTED + 1))
 done
