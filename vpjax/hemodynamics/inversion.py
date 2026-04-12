@@ -59,7 +59,11 @@ _BALLOON_BOUNDS: dict[str, tuple[float, float]] = {
     "E0": (0.15, 0.65),
 }
 
-_BALLOON_NAMES: tuple[str, ...] = ("kappa", "gamma", "tau", "alpha", "E0")
+_BALLOON_ALL_NAMES: tuple[str, ...] = ("kappa", "gamma", "tau", "alpha", "E0")
+
+# Default: fit only HRF-shaping params.  alpha and E0 are poorly
+# identifiable from BOLD alone (Stephan et al. 2007, DCM convention).
+_BALLOON_DEFAULT_FIT: tuple[str, ...] = ("kappa", "gamma", "tau")
 
 _RIERA_BOUNDS: dict[str, tuple[float, float]] = {
     "kappa_no": (0.2, 2.0),
@@ -94,6 +98,19 @@ _RIERA_DEFAULT_FIT: tuple[str, ...] = (
 # Balloon-Windkessel inverse problems
 # ---------------------------------------------------------------------------
 
+def _make_balloon_params(
+    theta: Float[Array, "P"],
+    base_params: BalloonParams,
+    fit_names: tuple[str, ...],
+) -> BalloonParams:
+    """Reconstruct BalloonParams, replacing fitted fields with clipped theta."""
+    vals = {name: getattr(base_params, name) for name in _BALLOON_ALL_NAMES}
+    for i, name in enumerate(fit_names):
+        lo, hi = _BALLOON_BOUNDS[name]
+        vals[name] = jnp.clip(theta[i], lo, hi)
+    return BalloonParams(**vals)
+
+
 def fit_balloon_bold(
     bold_data: Float[Array, "N"],
     stimulus: Float[Array, "T"],
@@ -101,6 +118,7 @@ def fit_balloon_bold(
     dt: float = 0.01,
     balloon_params: BalloonParams | None = None,
     bold_params: BOLDParams | None = None,
+    fit_names: tuple[str, ...] = _BALLOON_DEFAULT_FIT,
     n_steps: int = 500,
     learning_rate: float = 5.0,
 ) -> dict[str, Float[Array, ""]]:
@@ -109,6 +127,11 @@ def fit_balloon_bold(
     Integrates the Balloon ODE at resolution *dt*, observes the BOLD
     signal, subsamples to *tr*, and minimizes MSE against *bold_data*.
     Gradients flow through the ODE solver via JAX autodiff.
+
+    Only the parameters named in *fit_names* are optimised; the rest
+    are held fixed at their values in *balloon_params*.  The default
+    fits (kappa, gamma, tau) — the HRF-shaping parameters — and holds
+    alpha and E0 fixed, following DCM convention (Stephan et al. 2007).
 
     Parameters
     ----------
@@ -119,14 +142,16 @@ def fit_balloon_bold(
     dt : ODE integration timestep (seconds)
     balloon_params : initial BalloonParams (default: DCM standard)
     bold_params : BOLDParams held fixed (default: 3T)
+    fit_names : which BalloonParams fields to optimise
+        (default: kappa, gamma, tau)
     n_steps : gradient descent iterations
     learning_rate : step size (default 5.0 — gradients through ODE
         solvers are O(1e-3), requiring a larger step than typical)
 
     Returns
     -------
-    Dict with fitted parameters ('kappa', 'gamma', 'tau', 'alpha',
-    'E0'), plus 'bold_predicted' and 'loss'.
+    Dict with all 5 Balloon parameter values (fitted and fixed),
+    plus 'bold_predicted' and 'loss'.
     """
     if balloon_params is None:
         balloon_params = BalloonParams()
@@ -134,32 +159,16 @@ def fit_balloon_bold(
         bold_params = BOLDParams()
 
     subsample = int(round(tr / dt))
+    n = bold_data.shape[0]
 
-    # Pack initial parameters
-    theta = jnp.array([
-        balloon_params.kappa,
-        balloon_params.gamma,
-        balloon_params.tau,
-        balloon_params.alpha,
-        balloon_params.E0,
-    ])
+    # Pack only the fitted parameters into theta
+    theta = jnp.array([float(getattr(balloon_params, name)) for name in fit_names])
 
     def loss_fn(theta):
-        kappa = jnp.clip(theta[0], *_BALLOON_BOUNDS["kappa"])
-        gamma = jnp.clip(theta[1], *_BALLOON_BOUNDS["gamma"])
-        tau = jnp.clip(theta[2], *_BALLOON_BOUNDS["tau"])
-        alpha = jnp.clip(theta[3], *_BALLOON_BOUNDS["alpha"])
-        E0 = jnp.clip(theta[4], *_BALLOON_BOUNDS["E0"])
-
-        bp = BalloonParams(
-            kappa=kappa, gamma=gamma, tau=tau, alpha=alpha, E0=E0,
-        )
+        bp = _make_balloon_params(theta, balloon_params, fit_names)
         _, traj = solve_balloon(bp, stimulus, dt=dt)
-        bold_pred = observe_bold(traj, bold_params)[::subsample]
-
-        # Trim to match data length
-        n = bold_data.shape[0]
-        return jnp.mean((bold_pred[:n] - bold_data) ** 2)
+        bold_pred = observe_bold(traj, bold_params)[::subsample][:n]
+        return jnp.mean((bold_pred - bold_data) ** 2)
 
     grad_fn = jax.grad(loss_fn)
     velocity = jnp.zeros_like(theta)
@@ -174,32 +183,19 @@ def fit_balloon_bold(
 
     (theta, _), _ = jax.lax.scan(step, (theta, velocity), None, length=n_steps)
 
-    # Unpack final values
-    kappa = jnp.clip(theta[0], *_BALLOON_BOUNDS["kappa"])
-    gamma = jnp.clip(theta[1], *_BALLOON_BOUNDS["gamma"])
-    tau = jnp.clip(theta[2], *_BALLOON_BOUNDS["tau"])
-    alpha = jnp.clip(theta[3], *_BALLOON_BOUNDS["alpha"])
-    E0 = jnp.clip(theta[4], *_BALLOON_BOUNDS["E0"])
-
     # Final forward pass
-    bp_final = BalloonParams(
-        kappa=kappa, gamma=gamma, tau=tau, alpha=alpha, E0=E0,
-    )
+    bp_final = _make_balloon_params(theta, balloon_params, fit_names)
     _, traj_final = solve_balloon(bp_final, stimulus, dt=dt)
-    bold_pred = observe_bold(traj_final, bold_params)[::subsample]
-    n = bold_data.shape[0]
-    bold_pred = bold_pred[:n]
+    bold_pred = observe_bold(traj_final, bold_params)[::subsample][:n]
     loss = jnp.mean((bold_pred - bold_data) ** 2)
 
-    return {
-        "kappa": kappa,
-        "gamma": gamma,
-        "tau": tau,
-        "alpha": alpha,
-        "E0": E0,
-        "bold_predicted": bold_pred,
-        "loss": loss,
-    }
+    result: dict[str, Float[Array, "..."]] = {}
+    for name in _BALLOON_ALL_NAMES:
+        result[name] = getattr(bp_final, name)
+    result["bold_predicted"] = bold_pred
+    result["loss"] = loss
+
+    return result
 
 
 def fit_balloon_multimodal(
@@ -212,6 +208,7 @@ def fit_balloon_multimodal(
     weights: dict[str, float] | None = None,
     balloon_params: BalloonParams | None = None,
     bold_params: BOLDParams | None = None,
+    fit_names: tuple[str, ...] = _BALLOON_ALL_NAMES,
     n_steps: int = 500,
     learning_rate: float = 5.0,
 ) -> dict[str, Float[Array, ""]]:
@@ -221,6 +218,10 @@ def fit_balloon_multimodal(
     (fractional CBV change) time series.  Multiple modalities improve
     parameter identifiability by constraining complementary aspects of
     the hemodynamic response.
+
+    The default fits all 5 parameters, since multi-modal data provides
+    enough constraints.  For BOLD-only, use :func:`fit_balloon_bold`
+    which defaults to the identifiable subset (kappa, gamma, tau).
 
     Parameters
     ----------
@@ -234,13 +235,16 @@ def fit_balloon_multimodal(
         (default: 1.0 for each)
     balloon_params : initial BalloonParams
     bold_params : BOLDParams held fixed
+    fit_names : which BalloonParams fields to optimise
+        (default: all 5 — appropriate for multi-modal data)
     n_steps : gradient descent iterations
     learning_rate : step size
 
     Returns
     -------
-    Dict with fitted parameters, 'bold_predicted', optionally
-    'asl_predicted' and 'vaso_predicted', and 'loss'.
+    Dict with all 5 Balloon parameter values (fitted and fixed),
+    'bold_predicted', optionally 'asl_predicted'/'vaso_predicted',
+    and 'loss'.
     """
     if balloon_params is None:
         balloon_params = BalloonParams()
@@ -258,24 +262,10 @@ def fit_balloon_multimodal(
     subsample = int(round(tr / dt))
     n = bold_data.shape[0]
 
-    theta = jnp.array([
-        balloon_params.kappa,
-        balloon_params.gamma,
-        balloon_params.tau,
-        balloon_params.alpha,
-        balloon_params.E0,
-    ])
+    theta = jnp.array([float(getattr(balloon_params, name)) for name in fit_names])
 
     def loss_fn(theta):
-        kappa = jnp.clip(theta[0], *_BALLOON_BOUNDS["kappa"])
-        gamma = jnp.clip(theta[1], *_BALLOON_BOUNDS["gamma"])
-        tau = jnp.clip(theta[2], *_BALLOON_BOUNDS["tau"])
-        alpha = jnp.clip(theta[3], *_BALLOON_BOUNDS["alpha"])
-        E0 = jnp.clip(theta[4], *_BALLOON_BOUNDS["E0"])
-
-        bp = BalloonParams(
-            kappa=kappa, gamma=gamma, tau=tau, alpha=alpha, E0=E0,
-        )
+        bp = _make_balloon_params(theta, balloon_params, fit_names)
         _, traj = solve_balloon(bp, stimulus, dt=dt)
 
         bold_pred = observe_bold(traj, bold_params)[::subsample][:n]
@@ -304,29 +294,17 @@ def fit_balloon_multimodal(
 
     (theta, _), _ = jax.lax.scan(step, (theta, velocity), None, length=n_steps)
 
-    kappa = jnp.clip(theta[0], *_BALLOON_BOUNDS["kappa"])
-    gamma = jnp.clip(theta[1], *_BALLOON_BOUNDS["gamma"])
-    tau = jnp.clip(theta[2], *_BALLOON_BOUNDS["tau"])
-    alpha = jnp.clip(theta[3], *_BALLOON_BOUNDS["alpha"])
-    E0 = jnp.clip(theta[4], *_BALLOON_BOUNDS["E0"])
-
-    bp_final = BalloonParams(
-        kappa=kappa, gamma=gamma, tau=tau, alpha=alpha, E0=E0,
-    )
+    bp_final = _make_balloon_params(theta, balloon_params, fit_names)
     _, traj_final = solve_balloon(bp_final, stimulus, dt=dt)
 
     bold_pred = observe_bold(traj_final, bold_params)[::subsample][:n]
     loss = jnp.mean((bold_pred - bold_data) ** 2)
 
-    result: dict[str, Float[Array, "..."]] = {
-        "kappa": kappa,
-        "gamma": gamma,
-        "tau": tau,
-        "alpha": alpha,
-        "E0": E0,
-        "bold_predicted": bold_pred,
-        "loss": loss,
-    }
+    result: dict[str, Float[Array, "..."]] = {}
+    for name in _BALLOON_ALL_NAMES:
+        result[name] = getattr(bp_final, name)
+    result["bold_predicted"] = bold_pred
+    result["loss"] = loss
 
     if use_asl:
         result["asl_predicted"] = observe_asl(traj_final)[::subsample][:n]
@@ -343,6 +321,7 @@ def fit_balloon_bold_batch(
     dt: float = 0.01,
     balloon_params: BalloonParams | None = None,
     bold_params: BOLDParams | None = None,
+    fit_names: tuple[str, ...] = _BALLOON_DEFAULT_FIT,
     n_steps: int = 500,
     learning_rate: float = 5.0,
 ) -> dict[str, Float[Array, "R"]]:
@@ -352,8 +331,8 @@ def fit_balloon_bold_batch(
     ----------
     bold_data : BOLD signals, shape (R, N) — R ROIs, N timepoints
     stimulus : shared stimulus, shape (T,)
-    tr, dt, balloon_params, bold_params, n_steps, learning_rate :
-        forwarded to :func:`fit_balloon_bold`
+    tr, dt, balloon_params, bold_params, fit_names, n_steps,
+    learning_rate : forwarded to :func:`fit_balloon_bold`
 
     Returns
     -------
@@ -362,7 +341,7 @@ def fit_balloon_bold_batch(
     fit_fn = jax.vmap(
         lambda d: fit_balloon_bold(
             d, stimulus, tr, dt, balloon_params, bold_params,
-            n_steps, learning_rate,
+            fit_names, n_steps, learning_rate,
         )
     )
     return fit_fn(bold_data)

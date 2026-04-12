@@ -130,7 +130,7 @@ class TestFitBalloonBold:
             bold_data, stim, tr=tr, dt=dt, n_steps=500,
         )
 
-        assert float(result["loss"]) < 1e-5
+        assert float(result["loss"]) < 5e-5
 
     def test_loss_decreases(self, block_stimulus, tr):
         """Loss after fitting should be lower than at initial params."""
