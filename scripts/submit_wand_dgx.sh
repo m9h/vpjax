@@ -1,17 +1,16 @@
 #!/bin/bash
-# submit_wand_dgx.sh — Submit vpjax WAND processing on DGX Spark (GPU)
+# submit_wand_dgx.sh — Single long-running job for all WAND vpjax processing
 #
-# ASL preprocessing is already done (shared /data/raw/wand/derivatives/).
-# This submits vpjax modeling jobs on the GPU partition.
+# Submits ONE job that processes all subjects sequentially.
+# No preemption of other GPU work — takes the GPU once when available.
 #
 # Usage (on DGX Spark):
 #   cd ~/dev/vpjax && bash scripts/submit_wand_dgx.sh
 #   bash scripts/submit_wand_dgx.sh --dry
 set -euo pipefail
 
-WAND_DIR=/data/raw/wand
 VPJAX_DIR="${HOME}/dev/vpjax"
-LOG_DIR="${WAND_DIR}/derivatives/logs/vpjax-dgx"
+LOG_DIR="/data/raw/wand/derivatives/logs/vpjax-dgx"
 SCRIPT="${VPJAX_DIR}/scripts/process_wand_vpjax.py"
 
 DRY_RUN=false
@@ -25,44 +24,25 @@ done
 
 mkdir -p "${LOG_DIR}"
 
-SUBMITTED=0
-SKIPPED=0
+if $DRY_RUN; then
+    echo "[DRY] Would submit single job processing all subjects"
+    echo "Command: uv run --extra validation --extra gpu python ${SCRIPT} --all ${STAGE_ARG}"
+    exit 0
+fi
 
-for SUB_DIR in "${WAND_DIR}"/sub-*; do
-    SUB=$(basename "${SUB_DIR}")
+JOB_ID=$(sbatch --parsable \
+    --job-name="vpjax-wand-all" \
+    --partition=gpu \
+    --nice=1000 \
+    --cpus-per-task=4 \
+    --mem=16G \
+    --gres=gpu:1 \
+    --time=7-00:00:00 \
+    --output="${LOG_DIR}/wand_all_%j.out" \
+    --error="${LOG_DIR}/wand_all_%j.err" \
+    --export=ALL,XLA_PYTHON_CLIENT_PREALLOCATE=false,XLA_PYTHON_CLIENT_MEM_FRACTION=0.80 \
+    --wrap="cd ${VPJAX_DIR} && uv run --extra validation --extra gpu python ${SCRIPT} --all ${STAGE_ARG}")
 
-    # Skip if all stages complete
-    PERF_DONE="${WAND_DIR}/derivatives/vpjax/${SUB}/perfusion/perfusion_summary.json"
-    HEMO_DONE="${WAND_DIR}/derivatives/vpjax/${SUB}/hemodynamics/balloon_params.json"
-
-    if [ -z "${STAGE_ARG}" ] && [ -f "${PERF_DONE}" ] && [ -f "${HEMO_DONE}" ]; then
-        SKIPPED=$((SKIPPED + 1))
-        continue
-    fi
-
-    if $DRY_RUN; then
-        echo "[DRY] ${SUB}"
-        SUBMITTED=$((SUBMITTED + 1))
-        continue
-    fi
-
-    sbatch \
-        --job-name="vpjax-${SUB}" \
-        --partition=gpu \
-        --nice=10 \
-        --cpus-per-task=4 \
-        --mem=16G \
-        --gres=gpu:1 \
-        --time=2:00:00 \
-        --output="${LOG_DIR}/${SUB}_%j.out" \
-        --error="${LOG_DIR}/${SUB}_%j.err" \
-        --export=ALL,XLA_PYTHON_CLIENT_PREALLOCATE=false,XLA_PYTHON_CLIENT_MEM_FRACTION=0.80 \
-        --wrap="cd ${VPJAX_DIR} && uv run --extra validation --extra gpu python ${SCRIPT} --subject ${SUB} ${STAGE_ARG}"
-
-    SUBMITTED=$((SUBMITTED + 1))
-done
-
-echo ""
-echo "Submitted: ${SUBMITTED}  Skipped (done): ${SKIPPED}"
+echo "Submitted job ${JOB_ID} — single job processes all subjects sequentially"
 echo "Monitor: squeue -u \$USER"
-echo "Logs:    ${LOG_DIR}/"
+echo "Progress: tail -f ${LOG_DIR}/wand_all_${JOB_ID}.err"
