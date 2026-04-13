@@ -49,11 +49,11 @@ for SUB_DIR in "${WAND_DIR}"/sub-*; do
     sbatch \
         --job-name="vpjax-${SUB}" \
         --partition=gpu \
-        --nice=100 \
+        --nice=10 \
         --cpus-per-task=4 \
         --mem=16G \
         --gres=gpu:1 \
-        --time=1:00:00 \
+        --time=2:00:00 \
         --output="${LOG_DIR}/${SUB}_%j.out" \
         --error="${LOG_DIR}/${SUB}_%j.err" \
         --export=ALL,XLA_PYTHON_CLIENT_PREALLOCATE=false,XLA_PYTHON_CLIENT_MEM_FRACTION=0.80 \

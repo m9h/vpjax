@@ -297,12 +297,13 @@ def stage_iron_myelin(sub: str) -> None:
     # Find QSM chi map
     chi_path = None
     for qsm_dir in sorted(DERIV_DIR.glob("qsmxt*")):
-        candidate = _find_file(f"**/{sub}**/Chi*nii*", qsm_dir)
-        if candidate is not None:
-            chi_path = candidate
+        # Search for Chi maps under this QSM derivatives directory
+        for chi_candidate in qsm_dir.rglob("Chi*.nii*"):
+            if sub in str(chi_candidate):
+                chi_path = chi_candidate
+                break
+        if chi_path is not None:
             break
-    if chi_path is None:
-        chi_path = _find_file(f"**/Chi*nii*", DERIV_DIR / "qsmxt" / sub)
 
     if chi_path is None:
         log.info("Stage C: no QSM chi map for %s, skipping", sub)
