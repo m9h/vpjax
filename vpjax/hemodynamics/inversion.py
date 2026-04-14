@@ -170,18 +170,18 @@ def fit_balloon_bold(
         bold_pred = observe_bold(traj, bold_params)[::subsample][:n]
         return jnp.mean((bold_pred - bold_data) ** 2)
 
-    grad_fn = jax.grad(loss_fn)
-    velocity = jnp.zeros_like(theta)
-    beta = 0.9
-
-    def step(carry, _):
-        th, vel = carry
-        g = grad_fn(th)
-        vel = beta * vel + (1 - beta) * g
+    # JIT a single gradient step — avoids compiling the full unrolled
+    # scan which can take hours with diffeqsolve inside jax.grad.
+    @jax.jit
+    def step(th, vel):
+        g = jax.grad(loss_fn)(th)
+        vel = 0.9 * vel + 0.1 * g
         th = th - learning_rate * vel
-        return (th, vel), None
+        return th, vel
 
-    (theta, _), _ = jax.lax.scan(step, (theta, velocity), None, length=n_steps)
+    velocity = jnp.zeros_like(theta)
+    for _ in range(n_steps):
+        theta, velocity = step(theta, velocity)
 
     # Final forward pass
     bp_final = _make_balloon_params(theta, balloon_params, fit_names)
@@ -281,18 +281,16 @@ def fit_balloon_multimodal(
 
         return loss
 
-    grad_fn = jax.grad(loss_fn)
-    velocity = jnp.zeros_like(theta)
-    beta = 0.9
-
-    def step(carry, _):
-        th, vel = carry
-        g = grad_fn(th)
-        vel = beta * vel + (1 - beta) * g
+    @jax.jit
+    def step(th, vel):
+        g = jax.grad(loss_fn)(th)
+        vel = 0.9 * vel + 0.1 * g
         th = th - learning_rate * vel
-        return (th, vel), None
+        return th, vel
 
-    (theta, _), _ = jax.lax.scan(step, (theta, velocity), None, length=n_steps)
+    velocity = jnp.zeros_like(theta)
+    for _ in range(n_steps):
+        theta, velocity = step(theta, velocity)
 
     bp_final = _make_balloon_params(theta, balloon_params, fit_names)
     _, traj_final = solve_balloon(bp_final, stimulus, dt=dt)
@@ -422,18 +420,16 @@ def fit_riera_bold(
         bold_pred = observe_bold(pseudo, bold_params)[::subsample][:n]
         return jnp.mean((bold_pred - bold_data) ** 2)
 
-    grad_fn = jax.grad(loss_fn)
-    velocity = jnp.zeros_like(theta)
-    beta = 0.9
-
-    def step(carry, _):
-        th, vel = carry
-        g = grad_fn(th)
-        vel = beta * vel + (1 - beta) * g
+    @jax.jit
+    def step(th, vel):
+        g = jax.grad(loss_fn)(th)
+        vel = 0.9 * vel + 0.1 * g
         th = th - learning_rate * vel
-        return (th, vel), None
+        return th, vel
 
-    (theta, _), _ = jax.lax.scan(step, (theta, velocity), None, length=n_steps)
+    velocity = jnp.zeros_like(theta)
+    for _ in range(n_steps):
+        theta, velocity = step(theta, velocity)
 
     # Final forward pass
     rp_final = _make_params(theta)
