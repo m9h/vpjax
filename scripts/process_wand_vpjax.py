@@ -393,7 +393,7 @@ def stage_hemodynamic_inversion(sub: str) -> None:
     log.info("BOLD: %d volumes, TR=%.2fs, task=%s", n_vols, tr, bold_nii.stem)
 
     # Load events → construct stimulus at ODE resolution
-    dt = 0.05  # 50ms ODE timestep
+    dt = 0.5  # 500ms ODE timestep (matches TR/4, fast enough for HRF)
     duration = n_vols * tr
     n_samples = int(duration / dt)
     stimulus = np.zeros(n_samples, dtype=np.float32)
@@ -428,7 +428,7 @@ def stage_hemodynamic_inversion(sub: str) -> None:
         jnp.array(stimulus),
         tr=tr,
         dt=dt,
-        n_steps=500,
+        n_steps=200,
     )
 
     params_out = {
