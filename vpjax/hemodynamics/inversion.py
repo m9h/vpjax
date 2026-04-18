@@ -172,11 +172,14 @@ def fit_balloon_bold(
 
     # JIT a single gradient step — avoids compiling the full unrolled
     # scan which can take hours with diffeqsolve inside jax.grad.
+    # NaN-safe: if the ODE diverges for a parameter combination, the
+    # gradient is NaN and we skip the update (keep previous theta).
     @jax.jit
     def step(th, vel):
         g = jax.grad(loss_fn)(th)
-        vel = 0.9 * vel + 0.1 * g
-        th = th - learning_rate * vel
+        safe = jnp.all(jnp.isfinite(g))
+        vel = jnp.where(safe, 0.9 * vel + 0.1 * g, vel)
+        th = jnp.where(safe, th - learning_rate * vel, th)
         return th, vel
 
     velocity = jnp.zeros_like(theta)
@@ -284,8 +287,9 @@ def fit_balloon_multimodal(
     @jax.jit
     def step(th, vel):
         g = jax.grad(loss_fn)(th)
-        vel = 0.9 * vel + 0.1 * g
-        th = th - learning_rate * vel
+        safe = jnp.all(jnp.isfinite(g))
+        vel = jnp.where(safe, 0.9 * vel + 0.1 * g, vel)
+        th = jnp.where(safe, th - learning_rate * vel, th)
         return th, vel
 
     velocity = jnp.zeros_like(theta)
@@ -423,8 +427,9 @@ def fit_riera_bold(
     @jax.jit
     def step(th, vel):
         g = jax.grad(loss_fn)(th)
-        vel = 0.9 * vel + 0.1 * g
-        th = th - learning_rate * vel
+        safe = jnp.all(jnp.isfinite(g))
+        vel = jnp.where(safe, 0.9 * vel + 0.1 * g, vel)
+        th = jnp.where(safe, th - learning_rate * vel, th)
         return th, vel
 
     velocity = jnp.zeros_like(theta)
