@@ -61,9 +61,10 @@ _BALLOON_BOUNDS: dict[str, tuple[float, float]] = {
 
 _BALLOON_ALL_NAMES: tuple[str, ...] = ("kappa", "gamma", "tau", "alpha", "E0")
 
-# Default: fit only HRF-shaping params.  alpha and E0 are poorly
-# identifiable from BOLD alone (Stephan et al. 2007, DCM convention).
-_BALLOON_DEFAULT_FIT: tuple[str, ...] = ("kappa", "gamma", "tau")
+# Default: fit only the two identifiable HRF-shaping params.
+# gamma drives the optimizer into unstable ODE regions (NaN),
+# and alpha/E0 are degenerate from BOLD alone (Stephan et al. 2007).
+_BALLOON_DEFAULT_FIT: tuple[str, ...] = ("kappa", "tau")
 
 _RIERA_BOUNDS: dict[str, tuple[float, float]] = {
     "kappa_no": (0.2, 2.0),
