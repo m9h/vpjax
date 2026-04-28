@@ -80,17 +80,32 @@ def anat_work_dir(subject: str, session: str) -> Path:
     return anat_in_cvr_dir(subject, session) / "_work"
 
 
+PET_TRACER_SUFFIX = {"amyloid": "amyloid_18FAV45", "tau": "tau_18FAV1451"}
+
+
 def pet_tracer_dir(subject: str, session: str, tracer: str) -> Path:
-    suffix = {"amyloid": "amyloid_18FAV45", "tau": "tau_18FAV1451"}[tracer]
-    return VPJAX_ROOT / subject / session / "pet" / suffix
+    return VPJAX_ROOT / subject / session / "pet" / PET_TRACER_SUFFIX[tracer]
+
+
+def petsurfer_dir(subject: str, session: str, tracer: str) -> Path:
+    """PETSurfer outputs from Legion (NFS-shared)."""
+    return (
+        Path("/data/datasets/smri-fm-cmp/integrated/ds004856")
+        / subject / session / "pet" / PET_TRACER_SUFFIX[tracer] / "petsurfer"
+    )
 
 
 def out_session_dir(subject: str, session: str) -> Path:
     return VPJAX_ROOT / subject / session
 
 
-# FreeSurfer aparc+aseg cerebellum labels for SUVR reference region.
+# FreeSurfer aparc+aseg cerebellum labels.
+#   - CEREBELLUM_LABELS         = whole cerebellum (cortex + WM) — used by the
+#     vpjax volumetric SUVR helper as a generous reference mask.
+#   - CEREBELLUM_CORTEX_LABELS  = cerebellar cortex only — the modern AV45
+#     reference and what PETSurfer's mri_gtmpvc was rescaled against.
 CEREBELLUM_LABELS = (7, 8, 46, 47)
+CEREBELLUM_CORTEX_LABELS = (8, 47)
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +682,122 @@ def run_pet(subject: str, session: str, *,
 
 
 # ---------------------------------------------------------------------------
+# Stage D′: PETSurfer pickup — GTM-PVC per-region SUVR from Legion
+# ---------------------------------------------------------------------------
+
+def _parse_gtm_stats(stats_path: Path) -> tuple[list[int], list[str], list[str]]:
+    """Parse a PETSurfer gtm.stats.dat fixed-width table.
+
+    Returns (label_ids, region_names, tissue_types) — order matches the
+    rows of gtm.nii.gz / gtm.tsv exactly.
+    """
+    label_ids: list[int] = []
+    names: list[str] = []
+    tissue: list[str] = []
+    with open(stats_path) as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            try:
+                _idx = int(parts[0])
+                label_id = int(parts[1])
+            except ValueError:
+                continue
+            label_ids.append(label_id)
+            names.append(parts[2])
+            tissue.append(parts[3])
+    return label_ids, names, tissue
+
+
+def run_pet_petsurfer(subject: str, session: str, *,
+                     tracer: str = "amyloid",
+                     force: bool = False) -> dict:
+    """Ingest PETSurfer GTM-PVC outputs into the vpjax tree.
+
+    PETSurfer (FreeSurfer's mri_gtmpvc) ran on Legion and lives under
+    /data/datasets/smri-fm-cmp/integrated/.../petsurfer/.  Each session
+    has a per-region SUVR vector with iterative GTM partial-volume
+    correction — strictly better than our volumetric Müller-Gärtner
+    helper for cortical regions.
+
+    Output: vpjax/.../pet/<tracer>/regional_suvr_petsurfer.json with
+    the same schema as the existing regional_suvr.json
+    (region_ids, suvr, bpnd) so the joint stage can swap it in
+    transparently.  Adds suvr_nopvc and tissue_type columns for
+    diagnostic use.
+    """
+    out_dir = pet_tracer_dir(subject, session, tracer)
+    out_path = out_dir / "regional_suvr_petsurfer.json"
+
+    if not force and out_path.exists():
+        log.info("petsurfer SUVR already ingested, skipping")
+        return {"status": "skipped", "outputs": [str(out_path)]}
+
+    src = petsurfer_dir(subject, session, tracer)
+    if not src.exists():
+        log.warning("PETSurfer dir missing: %s", src)
+        return {"status": "missing", "reason": str(src)}
+
+    stats_path = src / "pvc" / "gtm.stats.dat"
+    gtm_path = src / "pvc" / "gtm.nii.gz"
+    nopvc_path = src / "pvc" / "nopvc.nii.gz"
+    for p in (stats_path, gtm_path, nopvc_path):
+        if not p.exists():
+            return {"status": "missing", "reason": f"PETSurfer file missing: {p}"}
+
+    label_ids, names, tissues = _parse_gtm_stats(stats_path)
+    gtm = _load_nii(gtm_path)[0].squeeze().astype(np.float32)
+    nopvc = _load_nii(nopvc_path)[0].squeeze().astype(np.float32)
+
+    if gtm.shape != (len(label_ids),):
+        return {"status": "error",
+                "reason": f"gtm.nii.gz length {gtm.shape} ≠ stats rows {len(label_ids)}"}
+    if nopvc.shape != gtm.shape:
+        return {"status": "error",
+                "reason": f"nopvc.nii.gz shape {nopvc.shape} ≠ gtm shape {gtm.shape}"}
+
+    # PETSurfer's GTM is already cerebellum-cortex-normalised (--rescale 8 47);
+    # the diagnostic mean over (8, 47) should be ≈ 1.0 by construction.
+    cb_idx = [i for i, l in enumerate(label_ids) if l in CEREBELLUM_CORTEX_LABELS]
+    cb_gtm_mean = float(gtm[cb_idx].mean()) if cb_idx else None
+    cb_nopvc_mean = float(nopvc[cb_idx].mean()) if cb_idx else None
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "tracer": tracer,
+        "source": "petsurfer (mri_gtmpvc)",
+        "petsurfer_dir": str(src),
+        "n_regions": len(label_ids),
+        "region_ids": label_ids,
+        "region_names": names,
+        "tissue_types": tissues,
+        "suvr": gtm.tolist(),                 # GTM-PVC SUVR
+        "suvr_nopvc": nopvc.tolist(),         # un-PVCed reference
+        "bpnd": (gtm - 1.0).tolist(),         # Logan-equilibrium BPnd
+        "cerebellum_gtm_mean": cb_gtm_mean,
+        "cerebellum_nopvc_mean": cb_nopvc_mean,
+        "note": (
+            "PETSurfer mri_gtmpvc geometric-transfer-matrix PVC. "
+            "Already SUVR-normalised against cerebellar GM (FS labels 8,47); "
+            "BPnd = SUVR - 1 (Logan equilibrium limit). Some regions can have "
+            "negative GTM-PVC values due to noise amplification — keep them "
+            "for downstream regression-style analyses but treat as low-confidence."
+        ),
+    }
+    out_path.write_text(json.dumps(payload, indent=2))
+    log.info("saved %s (%d regions, cerebellum-GTM=%.3f)",
+             out_path, len(label_ids), cb_gtm_mean or 0.0)
+
+    return {
+        "status": "ok",
+        "n_regions": len(label_ids),
+        "cerebellum_gtm_mean": cb_gtm_mean,
+        "outputs": [str(out_path)],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Stage E: ASL → T1 + regional CBF (prep for the joint amyloid–CMRO2 fit)
 # ---------------------------------------------------------------------------
 
@@ -765,19 +896,47 @@ def run_asl_in_t1(subject: str, session: str, *, force: bool = False) -> dict:
 
 def run_joint_amyloid_cmro2(subject: str, session: str, *,
                              tracer: str = "amyloid",
+                             pet_source: str = "auto",
                              force: bool = False) -> dict:
-    """Joint per-region (BPnd, OEF) fit with Vaishnavi-style coupling."""
+    """Joint per-region (BPnd, OEF) fit with Vaishnavi-style coupling.
+
+    The PET source can be ``"petsurfer"`` (GTM-PVC, preferred when
+    available), ``"vpjax"`` (our volumetric SUVR), or ``"auto"`` —
+    which picks PETSurfer if its file is present, otherwise falls back
+    to the vpjax pipeline.  The selected source is recorded in the
+    output JSON.
+    """
     out_path = (out_session_dir(subject, session)
                 / "metabolism" / "amyloid_cmro2_joint.json")
     if not force and out_path.exists():
         log.info("joint amyloid-CMRO2 output already exists, skipping")
         return {"status": "skipped", "outputs": [str(out_path)]}
 
-    pet_summary = pet_tracer_dir(subject, session, tracer) / "regional_suvr.json"
     cbf_summary = out_session_dir(subject, session) / "perfusion" / "regional_cbf.json"
-    if not pet_summary.exists() or not cbf_summary.exists():
+    if not cbf_summary.exists():
         return {"status": "missing",
-                "reason": "needs pet (regional_suvr.json) + asl-in-t1 (regional_cbf.json) stages"}
+                "reason": "needs asl_in_t1 stage (regional_cbf.json)"}
+
+    pet_dir = pet_tracer_dir(subject, session, tracer)
+    petsurfer_path = pet_dir / "regional_suvr_petsurfer.json"
+    vpjax_path = pet_dir / "regional_suvr.json"
+
+    if pet_source == "petsurfer":
+        pet_summary = petsurfer_path
+    elif pet_source == "vpjax":
+        pet_summary = vpjax_path
+    elif pet_source == "auto":
+        pet_summary = petsurfer_path if petsurfer_path.exists() else vpjax_path
+    else:
+        return {"status": "error", "reason": f"unknown pet_source: {pet_source}"}
+
+    if not pet_summary.exists():
+        return {"status": "missing",
+                "reason": f"PET regional summary missing: {pet_summary}"}
+
+    log.info("joint: PET source = %s (%s)",
+             "petsurfer" if pet_summary == petsurfer_path else "vpjax",
+             pet_summary.name)
 
     pet_data = json.loads(pet_summary.read_text())
     cbf_data = json.loads(cbf_summary.read_text())
@@ -812,8 +971,11 @@ def run_joint_amyloid_cmro2(subject: str, session: str, *,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    pet_source_used = "petsurfer" if pet_summary == petsurfer_path else "vpjax"
     payload = {
         "tracer": tracer,
+        "pet_source": pet_source_used,
+        "pet_summary_path": str(pet_summary),
         "n_regions": int(common.size),
         "region_ids": common.tolist(),
         "suvr": suvr.tolist(),
@@ -829,7 +991,10 @@ def run_joint_amyloid_cmro2(subject: str, session: str, *,
         "note": (
             "Joint per-region (BPnd, OEF) recovered from SUVR + CBF with "
             "Vaishnavi 2010 amyloid-CMRO2 coupling (CMRO2 = baseline·(1+α·BPnd)). "
-            "Loss = SUVR fit + λ_couple · normalised CMRO2 residual + λ_oef · (OEF-prior)²."
+            "Loss = SUVR fit + λ_couple · normalised CMRO2 residual + λ_oef · (OEF-prior)². "
+            "When pet_source='petsurfer', SUVR comes from FreeSurfer's mri_gtmpvc "
+            "(GTM partial-volume correction) and is more accurate in cortical "
+            "regions than the vpjax volumetric Müller-Gärtner output."
         ),
     }
     out_path.write_text(json.dumps(payload, indent=2))
@@ -1061,8 +1226,8 @@ def run_identifiability(subject: str, session: str, *,
 # Driver
 # ---------------------------------------------------------------------------
 
-STAGES = ("cvr", "perfusion", "metabolism", "pet", "asl_in_t1", "joint",
-          "identifiability")
+STAGES = ("cvr", "perfusion", "metabolism", "pet", "pet_petsurfer",
+          "asl_in_t1", "joint", "identifiability")
 
 
 def process_session(subject: str, session: str, *,
@@ -1088,6 +1253,10 @@ def process_session(subject: str, session: str, *,
         manifest["stages"]["metabolism"] = run_metabolism(subject, session, force=force)
     if "pet" in stages:
         manifest["stages"]["pet"] = run_pet(subject, session, force=force)
+    if "pet_petsurfer" in stages:
+        manifest["stages"]["pet_petsurfer"] = run_pet_petsurfer(
+            subject, session, force=force,
+        )
     if "asl_in_t1" in stages:
         manifest["stages"]["asl_in_t1"] = run_asl_in_t1(subject, session, force=force)
     if "joint" in stages:

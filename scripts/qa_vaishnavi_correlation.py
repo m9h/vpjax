@@ -41,31 +41,32 @@ def is_cortical_dkt(rid: int) -> bool:
 
 def main(subject: str, session: str) -> int:
     base = _vpjax_dir(subject, session)
-    pet = json.loads((base / "pet/amyloid_18FAV45/regional_suvr.json").read_text())
-    cbf = json.loads((base / "perfusion/regional_cbf.json").read_text())
     joint = json.loads((base / "metabolism/amyloid_cmro2_joint.json").read_text())
 
-    pet_ids = np.asarray(pet["region_ids"], dtype=int)
-    pet_bpnd = np.asarray(pet["bpnd"], dtype=float)
-    pet_suvr = np.asarray(pet["suvr"], dtype=float)
-    cbf_ids = np.asarray(cbf["region_ids"], dtype=int)
-    cbf_means = np.asarray(cbf["cbf_mean_per_region"], dtype=float)
+    # Use the joint output as the single source of truth — it carries
+    # whichever PET source was selected (vpjax volumetric vs PETSurfer
+    # GTM-PVC) and the per-region BPnd recovered by the joint fit,
+    # which is consistent with the CBF used to compute CMRO2.
     j_ids = np.asarray(joint["region_ids"], dtype=int)
+    j_bpnd = np.asarray(joint["bpnd"], dtype=float)
+    j_suvr = np.asarray(joint["suvr"], dtype=float)
+    j_cbf = np.asarray(joint["cbf"], dtype=float)
     j_oef = np.asarray(joint["oef"], dtype=float)
     j_cmro2_fick = np.asarray(joint["cmro2_fick"], dtype=float)
     j_cmro2_coup = np.asarray(joint["cmro2_coupling"], dtype=float)
+    pet_source = joint.get("pet_source", "unknown")
+    print(f"[vaishnavi] PET source (per joint stage): {pet_source}")
 
-    common = np.intersect1d(np.intersect1d(pet_ids, cbf_ids), j_ids)
-    cortical = np.array([rid for rid in common if is_cortical_dkt(int(rid))],
+    cortical = np.array([rid for rid in j_ids if is_cortical_dkt(int(rid))],
                         dtype=int)
 
     def lookup(arr_ids, arr_vals, target_ids):
         idx = np.searchsorted(arr_ids, target_ids)
         return arr_vals[idx]
 
-    bpnd = lookup(pet_ids, pet_bpnd, cortical)
-    suvr = lookup(pet_ids, pet_suvr, cortical)
-    cbf_v = lookup(cbf_ids, cbf_means, cortical)
+    bpnd = lookup(j_ids, j_bpnd, cortical)
+    suvr = lookup(j_ids, j_suvr, cortical)
+    cbf_v = lookup(j_ids, j_cbf, cortical)
     oef = lookup(j_ids, j_oef, cortical)
     cmro2_fick = lookup(j_ids, j_cmro2_fick, cortical)
     cmro2_coup = lookup(j_ids, j_cmro2_coup, cortical)
@@ -85,6 +86,7 @@ def main(subject: str, session: str) -> int:
     summary = {
         "subject": subject,
         "session": session,
+        "pet_source": pet_source,
         "n_cortical_regions": int(cortical.size),
         "correlations": {},
     }
