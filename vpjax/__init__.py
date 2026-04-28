@@ -25,6 +25,12 @@ from vpjax.hemodynamics.inversion import (
     fit_riera_bold,
 )
 
+# Identifiability tools (Walter & Pronzato local Jacobian-rank test)
+from vpjax.identifiability import (
+    balloon_identifiability,
+    check_local_identifiability,
+)
+
 # Perfusion observers
 from vpjax.perfusion.asl import observe_asl
 from vpjax.perfusion.vaso import observe_vaso
@@ -68,6 +74,9 @@ __all__ = [
     "observe_asl",
     "observe_vaso",
     "to_optical_properties",
+    # Identifiability
+    "check_local_identifiability",
+    "balloon_identifiability",
     # Subpackages
     "hemodynamics",
     "metabolism",
