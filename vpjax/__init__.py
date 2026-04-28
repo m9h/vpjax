@@ -33,6 +33,7 @@ from vpjax.perfusion.vaso import observe_vaso
 from vpjax import hemodynamics
 from vpjax import metabolism
 from vpjax import perfusion
+from vpjax import pet
 from vpjax import qbold
 from vpjax import vascular
 from vpjax import layers
@@ -71,6 +72,7 @@ __all__ = [
     "hemodynamics",
     "metabolism",
     "perfusion",
+    "pet",
     "qbold",
     "vascular",
     "layers",
