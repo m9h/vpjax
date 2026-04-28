@@ -504,6 +504,34 @@ def run_perfusion(subject: str, session: str, *,
         att_status = "oxford_asl arrival.nii.gz"
 
     cbf_brain = cbf_q[cbf_q > 0]
+
+    # Quality flag from coherent ΔM/M0 in the brain mask.  We take the
+    # SIGNED brain-mean ΔM (perfusion signal must be positive — controls
+    # are brighter than labels) divided by mean M0.  pCASL ΔM/M0 in a
+    # healthy adult is ~0.5–2 % (Alsop 2015); below 0.05 % or NEGATIVE
+    # means labeling essentially failed and the per-pair signal is
+    # dominated by noise — the per-voxel |ΔM| stays large in that case
+    # but the coherent contrast vanishes, which is the right diagnostic.
+    if mask_path.exists():
+        brain_mask = _load_nii(mask_path)[0] > 0
+    else:
+        brain_mask = m0 > 0
+    dm_brain_mean = float(delta_m[brain_mask].mean())
+    m0_brain_mean = float(m0[brain_mask].mean())
+    delta_ratio = dm_brain_mean / m0_brain_mean if m0_brain_mean > 0 else 0.0
+    if delta_ratio < 5e-4:
+        quality_flag = "low"
+        log.warning(
+            "ASL quality LOW: coherent ΔM/M0 = %.5f (labeling likely failed)",
+            delta_ratio,
+        )
+    elif delta_ratio < 2e-3:
+        quality_flag = "marginal"
+    else:
+        quality_flag = "ok"
+    log.info("ASL quality flag = %s (ΔM/M0 = %+.5f, ΔM=%.1f, M0=%.1f)",
+             quality_flag, delta_ratio, dm_brain_mean, m0_brain_mean)
+
     summary_path.write_text(json.dumps({
         "asl_type": asl_type,
         "pld_s": pld,
@@ -521,6 +549,8 @@ def run_perfusion(subject: str, session: str, *,
             float(np.percentile(cbf_brain, 10)),
             float(np.percentile(cbf_brain, 90)),
         ] if cbf_brain.size else None,
+        "delta_m_over_m0_brain_coherent": delta_ratio,
+        "quality_flag": quality_flag,
         "att_source": att_status,
         "note": (
             "vpjax-quantified CBF via Alsop 2015 single-PLD pCASL formula. "
@@ -531,10 +561,12 @@ def run_perfusion(subject: str, session: str, *,
     log.info("saved %s", summary_path)
 
     return {
-        "status": "ok",
+        "status": "ok" if quality_flag != "low" else "ok_low_quality",
         "n_label": int(label_idx.size),
         "n_control": int(ctrl_idx.size),
         "cbf_global_mean": float(cbf_brain.mean()) if cbf_brain.size else None,
+        "quality_flag": quality_flag,
+        "delta_m_over_m0_brain_coherent": delta_ratio,
         "outputs": [str(cbf_path), str(m0_path), str(deltam_path), str(summary_path)],
     }
 
@@ -747,12 +779,31 @@ def run_pet_petsurfer(subject: str, session: str, *,
             return {"status": "missing", "reason": f"PETSurfer file missing: {p}"}
 
     label_ids, names, tissues = _parse_gtm_stats(stats_path)
-    gtm = _load_nii(gtm_path)[0].squeeze().astype(np.float32)
-    nopvc = _load_nii(nopvc_path)[0].squeeze().astype(np.float32)
+    gtm_raw = _load_nii(gtm_path)[0].astype(np.float32)
+    nopvc_raw = _load_nii(nopvc_path)[0].astype(np.float32)
+
+    # PETSurfer normally writes (N_regions, 1, 1).  Some sessions land
+    # with an extra frame axis (N_regions, 1, 1, 2) when mri_gtmpvc
+    # processes multiple input frames — we take the first frame for the
+    # canonical static SUVR.
+    def _to_1d(arr: np.ndarray, n_expected: int) -> np.ndarray:
+        if arr.ndim == 4 and arr.shape[-1] > 1:
+            arr = arr[..., 0]  # first frame only
+        a = arr.squeeze()
+        if a.ndim == 2 and a.shape[1] > 1:
+            a = a[:, 0]
+        elif a.ndim != 1:
+            a = a.reshape(-1)
+        return a[:n_expected] if a.size > n_expected else a
+
+    gtm = _to_1d(gtm_raw, len(label_ids))
+    nopvc = _to_1d(nopvc_raw, len(label_ids))
+    n_frames_amy = int(gtm_raw.shape[-1]) if gtm_raw.ndim == 4 else 1
 
     if gtm.shape != (len(label_ids),):
         return {"status": "error",
-                "reason": f"gtm.nii.gz length {gtm.shape} ≠ stats rows {len(label_ids)}"}
+                "reason": f"gtm.nii.gz length {gtm.shape} ≠ stats rows {len(label_ids)} "
+                          f"(raw shape {gtm_raw.shape})"}
     if nopvc.shape != gtm.shape:
         return {"status": "error",
                 "reason": f"nopvc.nii.gz shape {nopvc.shape} ≠ gtm shape {gtm.shape}"}
@@ -777,6 +828,7 @@ def run_pet_petsurfer(subject: str, session: str, *,
         "bpnd": (gtm - 1.0).tolist(),         # Logan-equilibrium BPnd
         "cerebellum_gtm_mean": cb_gtm_mean,
         "cerebellum_nopvc_mean": cb_nopvc_mean,
+        "n_frames_in_source": n_frames_amy,
         "note": (
             "PETSurfer mri_gtmpvc geometric-transfer-matrix PVC. "
             "Already SUVR-normalised against cerebellar GM (FS labels 8,47); "
@@ -818,8 +870,11 @@ def run_asl_in_t1(subject: str, session: str, *, force: bool = False) -> dict:
         return {"status": "skipped", "outputs": [str(cbf_t1_path), str(regional_cbf_path)]}
 
     cbf_native_path = out_dir / "cbf_map.nii.gz"
+    m0_native_path = out_dir / "m0_estimate.nii.gz"
     if not cbf_native_path.exists():
         return {"status": "missing", "reason": "run perfusion stage first"}
+    if not m0_native_path.exists():
+        return {"status": "missing", "reason": "m0_estimate.nii.gz missing"}
 
     aparc_path = anat_work_dir(subject, session) / "aparc+aseg.nii.gz"
     brain_path = anat_work_dir(subject, session) / "brain.nii.gz"
@@ -828,16 +883,28 @@ def run_asl_in_t1(subject: str, session: str, *, force: bool = False) -> dict:
 
     import subprocess
 
-    # Register ASL CBF (proxy for ASL space) to T1 brain (rigid 6-DOF, normmi).
-    log.info("running flirt: ASL CBF → T1 brain ...")
+    # Register the M0 image (control-mean, T1-like contrast) rather than
+    # the CBF map (CSF-zero / GM-high, harder to register cross-modally).
+    # Then apply the same transform to the CBF map with trilinear
+    # interpolation.  Without this, wave-3 wave registers ~3.5x off in
+    # the cerebellum because the CBF/T1 contrast inversion confuses MI.
+    log.info("running flirt: ASL M0 → T1 brain (then apply to CBF)...")
+    subprocess.run([
+        "flirt",
+        "-in", str(m0_native_path),
+        "-ref", str(brain_path),
+        "-omat", str(asl_to_t1_mat),
+        "-out", str(out_dir / "m0_in_t1.nii.gz"),
+        "-dof", "6",
+        "-cost", "normmi",
+        "-interp", "trilinear",
+    ], check=True)
     subprocess.run([
         "flirt",
         "-in", str(cbf_native_path),
         "-ref", str(brain_path),
+        "-applyxfm", "-init", str(asl_to_t1_mat),
         "-out", str(cbf_t1_path),
-        "-omat", str(asl_to_t1_mat),
-        "-dof", "6",
-        "-cost", "normmi",
         "-interp", "trilinear",
     ], check=True)
 
@@ -916,6 +983,27 @@ def run_joint_amyloid_cmro2(subject: str, session: str, *,
     if not cbf_summary.exists():
         return {"status": "missing",
                 "reason": "needs asl_in_t1 stage (regional_cbf.json)"}
+
+    # If the perfusion stage flagged the ASL acquisition as "low" quality
+    # (ΔM/M0 below the labeling-noise threshold) the joint fit becomes
+    # meaningless — CBF drives both the SUVR flow correction and the Fick
+    # CMRO2 term.  Skip with an explicit status so downstream tooling
+    # knows not to use this session for joint analyses.
+    perf_summary_path = out_session_dir(subject, session) / "perfusion" / "region_summary.json"
+    if perf_summary_path.exists():
+        perf_summary = json.loads(perf_summary_path.read_text())
+        if perf_summary.get("quality_flag") == "low":
+            log.warning(
+                "joint stage skipped: perfusion quality_flag=low (raw pCASL "
+                "labeling failed for this session — see region_summary.json)",
+            )
+            return {
+                "status": "skipped_low_quality_cbf",
+                "reason": "perfusion quality_flag=low",
+                "delta_m_over_m0_coherent": perf_summary.get(
+                    "delta_m_over_m0_brain_coherent"
+                ),
+            }
 
     pet_dir = pet_tracer_dir(subject, session, tracer)
     petsurfer_path = pet_dir / "regional_suvr_petsurfer.json"
@@ -1232,6 +1320,7 @@ STAGES = ("cvr", "perfusion", "metabolism", "pet", "pet_petsurfer",
 
 def process_session(subject: str, session: str, *,
                     stages: tuple[str, ...] = STAGES,
+                    tracer: str = "amyloid",
                     force: bool = False) -> dict:
     log.info("=== %s %s ===", subject, session)
     out_dir = out_session_dir(subject, session)
@@ -1252,15 +1341,17 @@ def process_session(subject: str, session: str, *,
     if "metabolism" in stages:
         manifest["stages"]["metabolism"] = run_metabolism(subject, session, force=force)
     if "pet" in stages:
-        manifest["stages"]["pet"] = run_pet(subject, session, force=force)
+        manifest["stages"]["pet"] = run_pet(subject, session, tracer=tracer, force=force)
     if "pet_petsurfer" in stages:
         manifest["stages"]["pet_petsurfer"] = run_pet_petsurfer(
-            subject, session, force=force,
+            subject, session, tracer=tracer, force=force,
         )
     if "asl_in_t1" in stages:
         manifest["stages"]["asl_in_t1"] = run_asl_in_t1(subject, session, force=force)
     if "joint" in stages:
-        manifest["stages"]["joint"] = run_joint_amyloid_cmro2(subject, session, force=force)
+        manifest["stages"]["joint"] = run_joint_amyloid_cmro2(
+            subject, session, tracer=tracer, force=force,
+        )
     if "identifiability" in stages:
         manifest["stages"]["identifiability"] = run_identifiability(subject, session, force=force)
 
@@ -1290,6 +1381,12 @@ def main(argv: list[str]) -> int:
         help="which stages to run (default: all)",
     )
     parser.add_argument(
+        "--tracer",
+        choices=("amyloid", "tau"),
+        default="amyloid",
+        help="PET tracer for the pet/pet_petsurfer/joint stages",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="rerun even if outputs already exist",
@@ -1308,6 +1405,7 @@ def main(argv: list[str]) -> int:
             process_session(
                 args.subject, ses,
                 stages=tuple(args.stages),
+                tracer=args.tracer,
                 force=args.force,
             )
         except FileNotFoundError as e:
