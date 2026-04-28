@@ -843,10 +843,226 @@ def run_joint_amyloid_cmro2(subject: str, session: str, *,
 
 
 # ---------------------------------------------------------------------------
+# Stage G: Identifiability — local Jacobian-rank + symbolic Gröbner basis
+# ---------------------------------------------------------------------------
+
+def run_identifiability(subject: str, session: str, *,
+                        force: bool = False) -> dict:
+    """Per-session identifiability report for the protocols actually used.
+
+    Mirrors the standalone ``scripts/analyze_identifiability.py`` sweep
+    but parameterises every helper with the session's *actual* inputs:
+
+      * the data-driven CO2 stimulus extracted from this session's
+        hypercapnia BOLD (so the Balloon conditioning numbers are
+        protocol-faithful);
+      * the per-region CBF means from this session's ASL fit (so the
+        PET flow-correction and joint amyloid-CMRO2 helpers see the
+        empirical CBF spread);
+      * the actual single PLD (1.525 s) used by DLBS.
+
+    Output: ``identifiability_report.json`` with rank, condition number,
+    singular values, and explicit null-space directions for every
+    (forward model × fit_names) combination examined.
+    """
+    out_dir = out_session_dir(subject, session)
+    report_path = out_dir / "identifiability_report.json"
+
+    if not force and report_path.exists():
+        log.info("identifiability report already exists, skipping")
+        return {"status": "skipped", "outputs": [str(report_path)]}
+
+    payload: dict = {"subject": subject, "session": session}
+
+    # ------- Balloon under the actual data-driven CO2 stimulus -------
+    bold_path = cvr_dir(subject, session) / "mc.nii.gz"
+    mask_path = cvr_dir(subject, session) / "brain_mask.nii.gz"
+    bold_json = _hypercapnia_bold_json(subject, session)
+    if bold_path.exists() and mask_path.exists() and bold_json.exists():
+        from vpjax.hemodynamics.cvr import extract_global_stimulus
+        from vpjax.identifiability import balloon_identifiability
+        bold_4d, _, _ = _load_nii(bold_path)
+        mask, _, _ = _load_nii(mask_path)
+        tr = _read_tr(bold_json)
+        stim, _ = extract_global_stimulus(bold_4d, mask, tr=tr, dt=0.1)
+
+        balloon_rows = []
+        for fit_names in (
+            ("kappa", "gamma", "tau", "alpha", "E0"),
+            ("kappa", "tau"),
+            ("kappa",),
+        ):
+            for observers in (("bold",), ("bold", "asl"), ("bold", "asl", "vaso")):
+                out = balloon_identifiability(
+                    fit_names, stim, dt=0.1, tr=tr, observers=observers,
+                )
+                balloon_rows.append({
+                    "fit_names": list(fit_names),
+                    "observers": list(observers),
+                    "rank": int(out["rank"]),
+                    "n_params": int(out["n_params"]),
+                    "is_identifiable": bool(out["is_identifiable"]),
+                    "condition_number": float(out["condition_number"]),
+                    "singular_values": [float(v) for v in np.asarray(out["singular_values"])],
+                    "collinear_sets": out["collinear_sets"],
+                })
+        payload["balloon_data_driven"] = {
+            "tr": tr, "dt": 0.1,
+            "stimulus_peak_abs": float(np.max(np.abs(np.asarray(stim)))),
+            "rows": balloon_rows,
+        }
+        log.info("identifiability: Balloon sweep done (%d rows)", len(balloon_rows))
+    else:
+        log.warning("identifiability: hypercapnia BOLD missing — Balloon sweep skipped")
+        payload["balloon_data_driven"] = None
+
+    # ------- PET / joint with empirical CBF spread -------
+    cbf_summary_path = out_dir / "perfusion" / "regional_cbf.json"
+    pet_summary_path = (
+        out_dir / "pet" / "amyloid_18FAV45" / "regional_suvr.json"
+    )
+    if cbf_summary_path.exists():
+        cbf_data = json.loads(cbf_summary_path.read_text())
+        cbf_per_region = np.asarray(
+            cbf_data["cbf_mean_per_region"], dtype=np.float32,
+        )
+        cbf_ref = float(cbf_data.get("cbf_ref_cerebellum") or cbf_per_region.mean())
+        # Use a small representative subset (5 regions sampled across
+        # the empirical CBF range) — keeps the Jacobian small and the
+        # finding interpretable.
+        if cbf_per_region.size > 5:
+            idx = np.linspace(0, cbf_per_region.size - 1, 5).astype(int)
+            cbf_subset = cbf_per_region[idx]
+        else:
+            cbf_subset = cbf_per_region
+
+        from vpjax.identifiability import (
+            pet_joint_identifiability,
+            pet_static_suvr_identifiability,
+        )
+        import jax.numpy as jnp
+        cbf_jnp = jnp.asarray(cbf_subset)
+        pet_rows = []
+        for fit_flow in (False, True):
+            out = pet_static_suvr_identifiability(
+                n_regions=int(cbf_subset.size),
+                cbf_per_region=cbf_jnp,
+                cbf_ref=cbf_ref,
+                fit_flow=fit_flow,
+            )
+            pet_rows.append({
+                "fit_flow": fit_flow,
+                "rank": int(out["rank"]),
+                "n_params": int(out["n_params"]),
+                "is_identifiable": bool(out["is_identifiable"]),
+                "condition_number": float(out["condition_number"]),
+                "collinear_sets": out["collinear_sets"],
+            })
+        joint_rows = []
+        for fit_alpha in (False, True):
+            out = pet_joint_identifiability(
+                n_regions=int(cbf_subset.size),
+                cbf_per_region=cbf_jnp,
+                cbf_ref=cbf_ref,
+                fit_alpha_amy=fit_alpha,
+                fit_beta_flow=True,
+            )
+            joint_rows.append({
+                "fit_alpha_amy": fit_alpha,
+                "rank": int(out["rank"]),
+                "n_params": int(out["n_params"]),
+                "is_identifiable": bool(out["is_identifiable"]),
+                "condition_number": float(out["condition_number"]),
+                "collinear_sets": out["collinear_sets"],
+            })
+        payload["pet_static_suvr"] = pet_rows
+        payload["pet_joint"] = joint_rows
+        payload["pet_cbf_subset"] = {
+            "cbf_per_region": [float(v) for v in cbf_subset],
+            "cbf_ref": cbf_ref,
+            "n_regions_used": int(cbf_subset.size),
+            "n_regions_total": int(cbf_per_region.size),
+        }
+        log.info("identifiability: PET sweeps done")
+    else:
+        log.warning("identifiability: regional_cbf.json missing — PET sweeps skipped")
+        payload["pet_static_suvr"] = None
+        payload["pet_joint"] = None
+
+    # ------- ASL Buxton kinetic at the actual single PLD -------
+    raw_json = _raw_asl_paths(subject, session)[1]
+    if raw_json.exists():
+        from vpjax.identifiability import asl_kinetic_identifiability
+        meta = json.loads(raw_json.read_text())
+        pld = float(meta["PostLabelingDelay"])
+        asl_rows = [
+            ("single PLD, fit (CBF)", asl_kinetic_identifiability(
+                plds=[pld], fit_names=("CBF",))),
+            ("single PLD, fit (CBF, delta)", asl_kinetic_identifiability(
+                plds=[pld], fit_names=("CBF", "delta"))),
+        ]
+        payload["asl_kinetic"] = [
+            {
+                "label": label,
+                "rank": int(out["rank"]),
+                "n_params": int(out["n_params"]),
+                "is_identifiable": bool(out["is_identifiable"]),
+                "condition_number": float(out["condition_number"]),
+                "collinear_sets": out["collinear_sets"],
+            }
+            for label, out in asl_rows
+        ]
+        log.info("identifiability: ASL sweep done at PLD=%.3fs", pld)
+    else:
+        payload["asl_kinetic"] = None
+
+    # ------- Symbolic Gröbner-basis (informational only — no DLBS multi-echo) -------
+    # DLBS is single-echo throughout, so the symbolic helper is included
+    # only for cohorts that have multi-echo data (e.g. WAND).  We still
+    # record a placeholder so downstream tooling can detect that the
+    # symbolic block was considered but not applicable.
+    payload["symbolic_multi_echo"] = {
+        "note": "DLBS is single-echo BOLD/ASL/PET; symbolic invariants apply only "
+                "to multi-echo protocols (e.g. WAND MEGRE). See "
+                "vpjax.identifiability_symbolic.multi_echo_identifiability.",
+    }
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2))
+    log.info("saved %s", report_path)
+
+    # Headline summary for the manifest.
+    headline = {}
+    if payload.get("balloon_data_driven"):
+        rows = payload["balloon_data_driven"]["rows"]
+        kt_bold = next(
+            (r for r in rows
+             if r["fit_names"] == ["kappa", "tau"] and r["observers"] == ["bold"]),
+            None,
+        )
+        if kt_bold:
+            headline["balloon_kappa_tau_bold_cond"] = kt_bold["condition_number"]
+    if payload.get("pet_joint"):
+        for r in payload["pet_joint"]:
+            if r["fit_alpha_amy"]:
+                headline["joint_alpha_amy_free_identifiable"] = r["is_identifiable"]
+    if payload.get("asl_kinetic"):
+        first = payload["asl_kinetic"][0]
+        headline["asl_single_pld_cbf_identifiable"] = first["is_identifiable"]
+
+    return {
+        "status": "ok",
+        "report": str(report_path),
+        "headline": headline,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
-STAGES = ("cvr", "perfusion", "metabolism", "pet", "asl_in_t1", "joint")
+STAGES = ("cvr", "perfusion", "metabolism", "pet", "asl_in_t1", "joint",
+          "identifiability")
 
 
 def process_session(subject: str, session: str, *,
@@ -876,6 +1092,8 @@ def process_session(subject: str, session: str, *,
         manifest["stages"]["asl_in_t1"] = run_asl_in_t1(subject, session, force=force)
     if "joint" in stages:
         manifest["stages"]["joint"] = run_joint_amyloid_cmro2(subject, session, force=force)
+    if "identifiability" in stages:
+        manifest["stages"]["identifiability"] = run_identifiability(subject, session, force=force)
 
     manifest["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     manifest_path.write_text(json.dumps(manifest, indent=2))
