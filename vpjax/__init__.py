@@ -25,10 +25,20 @@ from vpjax.hemodynamics.inversion import (
     fit_riera_bold,
 )
 
-# Identifiability tools (Walter & Pronzato local Jacobian-rank test)
+# Identifiability tools (Walter & Pronzato local Jacobian-rank test
+# and Gröbner-basis global structural identifiability for sums-of-
+# exponentials models).
 from vpjax.identifiability import (
+    asl_kinetic_identifiability,
     balloon_identifiability,
     check_local_identifiability,
+    pet_joint_identifiability,
+    pet_static_suvr_identifiability,
+)
+from vpjax.identifiability_symbolic import (
+    analyze_groebner_identifiability,
+    compute_signal_invariants,
+    multi_echo_identifiability,
 )
 
 # Perfusion observers
@@ -77,6 +87,12 @@ __all__ = [
     # Identifiability
     "check_local_identifiability",
     "balloon_identifiability",
+    "pet_static_suvr_identifiability",
+    "pet_joint_identifiability",
+    "asl_kinetic_identifiability",
+    "analyze_groebner_identifiability",
+    "compute_signal_invariants",
+    "multi_echo_identifiability",
     # Subpackages
     "hemodynamics",
     "metabolism",

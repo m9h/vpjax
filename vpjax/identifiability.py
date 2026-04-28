@@ -250,7 +250,229 @@ def balloon_identifiability(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Static-SUVR / BPnd binding model
+# ---------------------------------------------------------------------------
+
+def pet_static_suvr_identifiability(
+    n_regions: int,
+    cbf_per_region: Float[Array, "R"] | None = None,
+    cbf_ref: float = 50.0,
+    fit_flow: bool = True,
+    nominal_bpnd: Float[Array, "R"] | None = None,
+    rtol: float = 1e-5,
+) -> dict[str, Any]:
+    """Identifiability of the static-SUVR binding-potential model.
+
+    Forward (per region):
+        SUVR = 1 + BPnd + β_flow · (CBF / CBF_ref − 1)
+
+    Latent: BPnd₁,…,BPnd_R  (and optionally a single global β_flow).
+    Observation: SUVR₁,…,SUVR_R (R measurements).
+
+    The Jacobian is exactly linear, so the rank test is closed-form, but
+    we run it through :func:`check_local_identifiability` for symmetry.
+
+    Parameters
+    ----------
+    n_regions : R
+    cbf_per_region : CBF values used for the flow-correction term
+        (length R).  If None, CBF varies as ``np.linspace(40, 60, R)``.
+    cbf_ref : reference-region mean CBF.
+    fit_flow : if True, β_flow is added as a free parameter.
+    nominal_bpnd : nominal BPnd values for the Jacobian evaluation.
+        Defaults to zero (Logan equilibrium baseline).
+    """
+    if cbf_per_region is None:
+        cbf_per_region = jnp.asarray(np.linspace(40.0, 60.0, n_regions))
+    if nominal_bpnd is None:
+        nominal_bpnd = jnp.zeros(n_regions)
+
+    if fit_flow:
+        names = tuple([f"BPnd_{i}" for i in range(n_regions)] + ["beta_flow"])
+        params0 = jnp.concatenate([nominal_bpnd, jnp.array([0.0])])
+
+        def fwd(theta):
+            bpnd = theta[:n_regions]
+            beta = theta[n_regions]
+            return 1.0 + bpnd + beta * (cbf_per_region / cbf_ref - 1.0)
+    else:
+        names = tuple(f"BPnd_{i}" for i in range(n_regions))
+        params0 = nominal_bpnd
+
+        def fwd(theta):
+            return 1.0 + theta
+
+    out = check_local_identifiability(fwd, params0, names=names, rtol=rtol)
+    out["model"] = "pet_static_suvr"
+    out["fit_flow"] = bool(fit_flow)
+    out["n_regions"] = int(n_regions)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Joint amyloid–CMRO2 model (vpjax.pet.joint)
+# ---------------------------------------------------------------------------
+
+def pet_joint_identifiability(
+    n_regions: int,
+    cbf_per_region: Float[Array, "R"] | None = None,
+    cbf_ref: float = 50.0,
+    fit_alpha_amy: bool = False,
+    fit_beta_flow: bool = True,
+    cmro2_baseline: float = 160.0,
+    alpha_amy: float = -0.10,
+    rtol: float = 1e-5,
+) -> dict[str, Any]:
+    """Identifiability of the joint amyloid–CMRO2 model.
+
+    Forward (per region):
+        SUVR    = 1 + BPnd + β_flow · (CBF / CBF_ref − 1)
+        CMRO2   = CBF · OEF · CaO2                          (Fick)
+        CMRO2_c = CMRO2_baseline · (1 + α_amy · BPnd)       (Vaishnavi)
+        residual_couple = (CMRO2 − CMRO2_c) / CMRO2_baseline (normalised)
+        residual_oef    = OEF − OEF_prior
+
+    Stacked observations (used as the implicit "data" for the Jacobian):
+        [SUVR_r, residual_couple_r, residual_oef_r]  for r in 1..R
+
+    Latent: BPnd_r, OEF_r per region; optional global α_amy, β_flow.
+    """
+    from vpjax.metabolism.fick import compute_cao2
+
+    if cbf_per_region is None:
+        cbf_per_region = jnp.asarray(np.linspace(40.0, 60.0, n_regions))
+    cao2 = float(compute_cao2())
+    oef_prior = jnp.array(0.40)
+
+    bpnd0 = jnp.zeros(n_regions)
+    oef0 = jnp.full((n_regions,), 0.40)
+
+    names: list[str] = []
+    parts = [bpnd0, oef0]
+    names += [f"BPnd_{i}" for i in range(n_regions)]
+    names += [f"OEF_{i}" for i in range(n_regions)]
+    if fit_beta_flow:
+        parts.append(jnp.array([0.0]))
+        names.append("beta_flow")
+    if fit_alpha_amy:
+        parts.append(jnp.array([alpha_amy]))
+        names.append("alpha_amy")
+    params0 = jnp.concatenate(parts)
+
+    def fwd(theta):
+        bpnd = theta[:n_regions]
+        oef = theta[n_regions:2 * n_regions]
+        idx = 2 * n_regions
+        beta = theta[idx] if fit_beta_flow else jnp.array(0.0)
+        if fit_beta_flow:
+            idx += 1
+        alpha = theta[idx] if fit_alpha_amy else jnp.array(alpha_amy)
+
+        suvr = 1.0 + bpnd + beta * (cbf_per_region / cbf_ref - 1.0)
+        cmro2_fick = cbf_per_region * oef * cao2
+        cmro2_coup = cmro2_baseline * (1.0 + alpha * bpnd)
+        couple_resid = (cmro2_fick - cmro2_coup) / cmro2_baseline
+        oef_resid = oef - oef_prior
+        return jnp.concatenate([suvr, couple_resid, oef_resid])
+
+    out = check_local_identifiability(fwd, params0, names=tuple(names), rtol=rtol)
+    out["model"] = "pet_joint"
+    out["n_regions"] = int(n_regions)
+    out["fit_beta_flow"] = bool(fit_beta_flow)
+    out["fit_alpha_amy"] = bool(fit_alpha_amy)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# ASL Buxton kinetic model (single- or multi-PLD)
+# ---------------------------------------------------------------------------
+
+def asl_kinetic_identifiability(
+    plds: Sequence[float],
+    fit_names: Sequence[str] = ("CBF",),
+    nominal_cbf: float = 60.0,
+    rtol: float = 1e-5,
+) -> dict[str, Any]:
+    """Identifiability of the Buxton single-PLD pCASL forward model.
+
+    The forward signal at a given PLD is given by
+    :func:`vpjax.perfusion.kinetic.asl_kinetic_signal`.  We treat each
+    PLD as one observation (in mL/100g/min units after the standard
+    quantification), and ask whether the requested ``fit_names`` are
+    locally identifiable from those observations.
+
+    ``fit_names`` is a subset of
+    ``("CBF", "delta", "tau", "alpha", "T1b", "T1t", "lambda_p")``;
+    other parameters stay at their literature defaults.
+
+    Parameters
+    ----------
+    plds : sequence of post-label delays (s).  Single-PLD acquisitions
+        give one measurement; multi-PLD give as many as you supply.
+    fit_names : parameter names to test for identifiability.
+    nominal_cbf : nominal CBF in mL/100g/min for the Jacobian point.
+    """
+    from vpjax.perfusion.kinetic import ASLKineticParams, asl_kinetic_signal
+
+    base_params = ASLKineticParams()
+    base_vals = {
+        "M0b": float(base_params.M0b),
+        "T1b": float(base_params.T1b),
+        "T1t": float(base_params.T1t),
+        "alpha": float(base_params.alpha),
+        "tau": float(base_params.tau),
+        "delta": float(base_params.delta),
+        "lambda_p": float(base_params.lambda_p),
+    }
+    valid = ("CBF",) + tuple(base_vals)
+    bad = [n for n in fit_names if n not in valid]
+    if bad:
+        raise ValueError(f"unknown ASL params: {bad}; valid: {valid}")
+
+    plds_arr = jnp.asarray([float(p) for p in plds])
+    nominal_cbf_jnp = jnp.array(float(nominal_cbf))
+
+    theta0 = []
+    for n in fit_names:
+        if n == "CBF":
+            theta0.append(nominal_cbf)
+        else:
+            theta0.append(base_vals[n])
+    theta0_jnp = jnp.asarray(theta0)
+
+    def fwd(theta):
+        vals = dict(base_vals)
+        cbf = nominal_cbf_jnp
+        for i, n in enumerate(fit_names):
+            if n == "CBF":
+                cbf = theta[i]
+            else:
+                vals[n] = theta[i]
+        params = ASLKineticParams(
+            M0b=jnp.asarray(vals["M0b"]),
+            T1b=jnp.asarray(vals["T1b"]),
+            T1t=jnp.asarray(vals["T1t"]),
+            alpha=jnp.asarray(vals["alpha"]),
+            tau=jnp.asarray(vals["tau"]),
+            delta=jnp.asarray(vals["delta"]),
+            lambda_p=jnp.asarray(vals["lambda_p"]),
+        )
+        # asl_kinetic_signal returns (T,) for scalar cbf, but expects
+        # cbf to be at-least-1D so it can broadcast.
+        return asl_kinetic_signal(plds_arr, jnp.atleast_1d(cbf), params).reshape(-1)
+
+    out = check_local_identifiability(fwd, theta0_jnp, names=tuple(fit_names), rtol=rtol)
+    out["model"] = "asl_kinetic"
+    out["plds"] = list(plds)
+    out["nominal_cbf"] = float(nominal_cbf)
+    return out
+
+
 __all__ = [
     "check_local_identifiability",
     "balloon_identifiability",
+    "pet_static_suvr_identifiability",
+    "pet_joint_identifiability",
+    "asl_kinetic_identifiability",
 ]

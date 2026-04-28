@@ -5,8 +5,11 @@ import numpy as np
 import pytest
 
 from vpjax.identifiability import (
+    asl_kinetic_identifiability,
     balloon_identifiability,
     check_local_identifiability,
+    pet_joint_identifiability,
+    pet_static_suvr_identifiability,
 )
 
 
@@ -111,6 +114,51 @@ class TestBalloonIdentifiability:
         assert out["condition_number"] > 5
         # All 5 sensitivities are nonzero (no exact collinearity at DCM).
         assert (s > 1e-10).all()
+
+    def test_pet_bpnd_only_is_identifiable(self):
+        """SUVR = 1 + BPnd per region is trivially full-rank."""
+        out = pet_static_suvr_identifiability(n_regions=5, fit_flow=False)
+        assert out["is_identifiable"] is True
+        assert out["rank"] == 5
+
+    def test_pet_global_beta_flow_unidentifiable(self):
+        """Adding a single global β_flow to per-region BPnd is rank-deficient
+        because each BPnd_i can absorb β_flow's contribution."""
+        out = pet_static_suvr_identifiability(n_regions=5, fit_flow=True)
+        assert out["is_identifiable"] is False
+        assert out["rank"] == 5
+        assert out["n_params"] == 6
+        assert out["collinear_sets"]
+        contributing = out["collinear_sets"][0]["params"]
+        assert "beta_flow" in contributing
+
+    def test_joint_alpha_amy_free_is_unidentifiable(self):
+        """In the single-subject joint amyloid-CMRO2 model, α_amy as a free
+        parameter is unidentifiable — its effect on the coupling residual
+        can be absorbed by per-region BPnd shifts.  The current driver
+        keeps α_amy fixed for exactly this reason."""
+        out = pet_joint_identifiability(
+            n_regions=5, fit_alpha_amy=True, fit_beta_flow=True,
+        )
+        assert out["is_identifiable"] is False
+        # The null direction should explicitly contain alpha_amy.
+        flat_params = [p for c in out["collinear_sets"] for p in c["params"]]
+        assert "alpha_amy" in flat_params
+
+    def test_asl_kinetic_single_pld_cbf_identifiable(self):
+        out = asl_kinetic_identifiability(plds=[1.525], fit_names=("CBF",))
+        assert out["is_identifiable"] is True
+        assert out["rank"] == 1
+
+    def test_asl_kinetic_5_params_rank_deficient(self):
+        """With 5 PLDs and 5 parameters, only 2 are recoverable —
+        (alpha, T1b) collinearity and tau, CBF rate-of-change are flat."""
+        out = asl_kinetic_identifiability(
+            plds=[0.5, 1.0, 1.5, 2.0, 2.5],
+            fit_names=("CBF", "delta", "tau", "alpha", "T1b"),
+        )
+        assert out["is_identifiable"] is False
+        assert out["rank"] < 5
 
     def test_multimodal_does_not_lose_rank(self, block_stimulus):
         """Adding ASL + VASO observations cannot reduce the rank.
