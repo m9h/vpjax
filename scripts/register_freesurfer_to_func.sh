@@ -33,9 +33,16 @@ if [[ ! -d "${FS_ROOT}" ]]; then
     echo "FreeSurfer dir not found: ${FS_ROOT}" >&2
     exit 2
 fi
+
+# CVR (hypercapnia BOLD) preprocessing is optional for some subjects;
+# when its output is absent we still run the FS .mgz→.nii.gz conversions
+# (downstream PET / ASL stages need the T1-space aparc + brain volumes
+# under _work/), and just skip the BBR registration to EPI space.
+HAVE_CVR=1
 if [[ ! -f "${CVR_DIR}/mean_func_brain.nii.gz" ]]; then
     echo "CVR mean_func_brain not found: ${CVR_DIR}/mean_func_brain.nii.gz" >&2
-    exit 2
+    echo "  → doing FS conversions only (no BBR registration)" >&2
+    HAVE_CVR=0
 fi
 
 mkdir -p "${OUT_DIR}" "${WORK_DIR}"
@@ -72,6 +79,11 @@ nib.save(nib.Nifti1Image(wm_mask, img.affine, img.header),
          "${WORK_DIR}/wmseg.nii.gz")
 print(f"wmseg voxels: {int(wm_mask.sum())}")
 PY
+
+if [[ "${HAVE_CVR}" == "0" ]]; then
+    echo "done (FS conversions only) — outputs at ${OUT_DIR}/_work/"
+    exit 0
+fi
 
 # 3) Run epi_reg (BBR EPI → T1).
 EPI_REG_OUT="${WORK_DIR}/epi_in_t1"

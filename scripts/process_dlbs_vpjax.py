@@ -225,7 +225,8 @@ def run_cvr(subject: str, session: str, *, force: bool = False,
 
     for p in (bold_path, mask_path, aparc_path, bold_json):
         if not p.exists():
-            raise FileNotFoundError(f"missing input: {p}")
+            log.warning("CVR stage skipped: missing input %s", p)
+            return {"status": "missing", "reason": f"missing input: {p}"}
 
     tr = _read_tr(bold_json)
     log.info("CVR: TR=%.3fs, BOLD=%s", tr, bold_path)
