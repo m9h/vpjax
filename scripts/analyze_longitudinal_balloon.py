@@ -181,7 +181,104 @@ def main(subject: str, age_center: float = 60.0,
         out_nii = out_dir / f"slope_{name}_per_year.nii.gz"
         nib.save(nib.Nifti1Image(slope_map, affine), str(out_nii))
         print(f"[long] saved {out_nii}")
+
+    # Companion: regression-β longitudinal fit.  Reads each session's
+    # cvr/balloon_params.json (per-region OLS β of BOLD on HRF-convolved
+    # stimulus) and does a per-region linear regression of β on
+    # (age - age_center).  Closed-form OLS, no JAX, instant.
+    fit_regression_longitudinal(
+        subject, used_sessions, ages, age_center, out_dir, template_aparc, affine,
+    )
     return 0
+
+
+def fit_regression_longitudinal(
+    subject: str,
+    sessions: list[str],
+    ages: list[float],
+    age_center: float,
+    out_dir: Path,
+    template_aparc: np.ndarray,
+    affine: np.ndarray,
+) -> None:
+    """Per-region OLS regression of regression-β on (age − age_center)."""
+    per_session_betas: list[dict[int, float]] = []
+    for ses in sessions:
+        params_path = (
+            VPJAX_ROOT / subject / ses / "cvr" / "balloon_params.json"
+        )
+        if not params_path.exists():
+            print(f"[long-reg] missing {params_path}, skipping regression fit",
+                  file=sys.stderr)
+            return
+        params = json.loads(params_path.read_text())
+        if "cvr_regression_beta" not in params:
+            print(f"[long-reg] {ses} balloon_params.json predates "
+                  "regression-β output; skipping regression fit",
+                  file=sys.stderr)
+            return
+        ids = params["region_ids"]
+        betas = params["cvr_regression_beta"]
+        per_session_betas.append({int(r): float(b) for r, b in zip(ids, betas)})
+
+    common = set(per_session_betas[0])
+    for d in per_session_betas[1:]:
+        common &= set(d)
+    common_ids = sorted(common)
+    if not common_ids:
+        print("[long-reg] no common regions across sessions", file=sys.stderr)
+        return
+
+    Y = np.array(
+        [[d[r] for r in common_ids] for d in per_session_betas]
+    )  # (S, R)
+    age_offsets = np.array([a - age_center for a in ages], dtype=np.float64)
+
+    # OLS per region: y_s = beta0 + beta1 · age_offset_s
+    X = np.stack([np.ones_like(age_offsets), age_offsets], axis=1)  # (S, 2)
+    XtX_inv = np.linalg.inv(X.T @ X)
+    coef = XtX_inv @ X.T @ Y    # (2, R) — [intercept, slope]
+    fitted = X @ coef           # (S, R)
+    resid = Y - fitted
+    rss = (resid ** 2).sum(axis=0)
+    tss = ((Y - Y.mean(axis=0, keepdims=True)) ** 2).sum(axis=0)
+    r2 = 1.0 - rss / np.maximum(tss, 1e-30)
+
+    payload = {
+        "subject": subject,
+        "sessions": sessions,
+        "ages": [float(a) for a in ages],
+        "age_center": age_center,
+        "n_regions": len(common_ids),
+        "region_ids": [int(r) for r in common_ids],
+        "regression_beta_baseline": coef[0].tolist(),
+        "regression_beta_slope_per_year": coef[1].tolist(),
+        "per_session_beta": [
+            [float(d[r]) for r in common_ids] for d in per_session_betas
+        ],
+        "r2": r2.tolist(),
+        "note": (
+            "Per-region OLS of cvr_regression_beta on (age - age_center) "
+            "across S sessions.  cvr_regression_beta itself comes from each "
+            "session's CVR stage: %BOLD per unit of HRF-convolved data-driven "
+            "CO2 stimulus.  Slope is interpretable as 'change in vascular "
+            "reactivity per year', though only 3 sessions makes the per-region "
+            "estimate noisy — useful as a group-level / pattern proxy."
+        ),
+    }
+    json_path = out_dir / "regression_longitudinal.json"
+    json_path.write_text(json.dumps(payload, indent=2))
+    print(f"[long-reg] saved {json_path} ({len(common_ids)} regions, "
+          f"mean |slope|={np.mean(np.abs(coef[1])):.5f}/yr, "
+          f"|slope|>1e-4 in {int((np.abs(coef[1]) > 1e-4).sum())} regions)")
+
+    rid_to_idx = {int(r): i for i, r in enumerate(common_ids)}
+    slope_map = np.zeros(template_aparc.shape, dtype=np.float32)
+    for rid, idx in rid_to_idx.items():
+        slope_map[template_aparc == rid] = float(coef[1, idx])
+    out_nii = out_dir / "slope_regression_beta_per_year.nii.gz"
+    nib.save(nib.Nifti1Image(slope_map, affine), str(out_nii))
+    print(f"[long-reg] saved {out_nii}")
 
 
 if __name__ == "__main__":
