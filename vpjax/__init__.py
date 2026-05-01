@@ -34,6 +34,7 @@ from vpjax.identifiability import (
     check_local_identifiability,
     pet_joint_identifiability,
     pet_static_suvr_identifiability,
+    riera_identifiability,
 )
 from vpjax.identifiability_symbolic import (
     analyze_groebner_identifiability,
@@ -90,6 +91,7 @@ __all__ = [
     "pet_static_suvr_identifiability",
     "pet_joint_identifiability",
     "asl_kinetic_identifiability",
+    "riera_identifiability",
     "analyze_groebner_identifiability",
     "compute_signal_invariants",
     "multi_echo_identifiability",

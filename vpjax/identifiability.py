@@ -469,10 +469,87 @@ def asl_kinetic_identifiability(
     return out
 
 
+# ---------------------------------------------------------------------------
+# Riera 8-state NVC model — for task-evoked BOLD
+# ---------------------------------------------------------------------------
+
+def riera_identifiability(
+    fit_names: Sequence[str],
+    stimulus: Float[Array, "T"],
+    dt: float = 0.1,
+    tr: float | None = None,
+    nominal: dict[str, float] | None = None,
+    rtol: float = 1e-5,
+) -> dict[str, Any]:
+    """Local identifiability of selected Riera-NVC parameters from BOLD.
+
+    The Riera 2007 model has 15 parameters across NO / adenosine / glutamate
+    /  vascular sub-systems.  At any given task-stimulus protocol, only a
+    handful are typically rank-recoverable — the rest live near a flat
+    direction of the loss surface.  This helper runs the same Walter–Pronzato
+    Jacobian-rank test as :func:`balloon_identifiability` against the Riera
+    forward model, so we can pre-screen which ``fit_names`` are even worth
+    optimising before we spend GPU minutes on a fit.
+
+    Parameters
+    ----------
+    fit_names : Riera parameter names to test (subset of
+        ``("kappa_no", "kappa_ade", "gamma_no", "gamma_ade", "c_no", "c_ade",
+        "tau_a", "tau_c", "tau_v", "alpha_a", "alpha_c", "alpha_v", "E0",
+        "phi", "tau_m")``).
+    stimulus : neural-input (or boxcar event) timecourse on the ODE grid.
+    dt : ODE timestep (s).
+    tr : sub-sample BOLD to this TR before computing the Jacobian
+        (matches the optimisation setup).
+    nominal : overrides for any of the 15 Riera parameters; defaults to the
+        Riera 2007 literature values for any name not given.
+    rtol : relative threshold for declaring a singular value zero.
+    """
+    from vpjax.hemodynamics.bold import BOLDParams, observe_bold
+    from vpjax.hemodynamics.inversion import _RIERA_ALL_NAMES, _RIERA_BOUNDS
+    from vpjax.hemodynamics.riera import (
+        RieraParams,
+        riera_to_balloon,
+        solve_riera,
+    )
+    from vpjax._types import BalloonState
+
+    valid = _RIERA_ALL_NAMES
+    bad = [n for n in fit_names if n not in valid]
+    if bad:
+        raise ValueError(f"unknown Riera param(s): {bad}; valid: {valid}")
+
+    nominal = dict(nominal or {})
+    base = RieraParams()
+    base_vals = {n: float(nominal.get(n, getattr(base, n))) for n in valid}
+    bold_params = BOLDParams()
+
+    sub = int(round(tr / dt)) if tr is not None else 1
+
+    def forward_fn(theta: Float[Array, "P"]) -> Float[Array, "..."]:
+        vals = dict(base_vals)
+        for i, n in enumerate(fit_names):
+            vals[n] = theta[i]
+        rp = RieraParams(**{k: jnp.asarray(v) for k, v in vals.items()})
+        _, traj = solve_riera(rp, stimulus, dt=dt)
+        v, q = riera_to_balloon(traj)
+        pseudo = BalloonState(s=jnp.zeros_like(v), f=traj.f_a, v=v, q=q)
+        y = observe_bold(pseudo, bold_params)
+        return jnp.ravel(y[::sub] if sub > 1 else y)
+
+    theta0 = jnp.array([base_vals[n] for n in fit_names])
+    result = check_local_identifiability(
+        forward_fn, theta0, names=tuple(fit_names), rtol=rtol,
+    )
+    result["model"] = "riera"
+    return result
+
+
 __all__ = [
     "check_local_identifiability",
     "balloon_identifiability",
     "pet_static_suvr_identifiability",
     "pet_joint_identifiability",
     "asl_kinetic_identifiability",
+    "riera_identifiability",
 ]
