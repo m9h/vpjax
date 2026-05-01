@@ -1703,11 +1703,171 @@ def run_task_bold(subject: str, session: str, *,
 
 
 # ---------------------------------------------------------------------------
+# Stage J: task-fMRI Riera 8-state NVC fit
+# ---------------------------------------------------------------------------
+
+# Default task to use for Riera — VentralVisual run-1 has both NO and
+# adenosine compartments well-stimulated and is identifiability-validated
+# (rank-6, cond ≈ 400 for the Riera 2007 default fit_names) on the DLBS
+# protocol.  Keeping it to one task keeps the Riera stage tractable
+# (~9 min/session/subject); add more tasks later if useful.
+RIERA_TASK_DEFAULT = "VentralVisual"
+RIERA_RUN_DEFAULT = "run-1"
+RIERA_DEFAULT_FIT_NAMES = ("c_no", "kappa_no", "gamma_no",
+                            "tau_v", "alpha_v", "E0")
+
+
+def run_task_riera(subject: str, session: str, *,
+                   task: str = RIERA_TASK_DEFAULT,
+                   run: str = RIERA_RUN_DEFAULT,
+                   n_steps: int = 600,
+                   learning_rate: float = 2.0,
+                   min_voxels: int = 20,
+                   force: bool = False) -> dict:
+    """Per-region Riera 8-state NVC fit on a chosen task BOLD.
+
+    Defaults to VentralVisual run-1 (high-SNR ventral-stream activation).
+    The Riera 2007 default fit_names — ``(c_no, kappa_no, gamma_no,
+    tau_v, alpha_v, E0)`` — are rank-6 and cond ≈ 400 on this protocol
+    (see :func:`vpjax.identifiability.riera_identifiability`).  Output
+    schema mirrors :func:`run_task_bold`'s regression-β so downstream
+    cross-method comparisons are trivial.
+
+    Output: vpjax/.../task/<task>/<run>/riera_params.json plus
+    voxel maps for the NO subsystem (c_no, kappa_no, gamma_no) and
+    venous transit (tau_v).
+    """
+    out_dir = out_session_dir(subject, session) / "task" / task / run
+    riera_path = out_dir / "riera_params.json"
+    if not force and riera_path.exists():
+        log.info("riera_params already exists, skipping")
+        return {"status": "skipped", "outputs": [str(riera_path)]}
+
+    bold_path = task_fsl_dir(subject, session, task, run) / "mc.nii.gz"
+    json_path = (
+        RAW_ROOT / subject / session / "func"
+        / f"{subject}_{session}_task-{task}_{run}_bold.json"
+    )
+    events_tsv = (
+        RAW_ROOT / subject / session / "func"
+        / f"{subject}_{session}_task-{task}_{run}_events.tsv"
+    )
+    aparc_path = anat_in_cvr_dir(subject, session) / "aparc+aseg.nii.gz"
+    for p in (bold_path, json_path, events_tsv, aparc_path):
+        if not p.exists():
+            return {"status": "missing", "reason": f"missing {p}"}
+
+    bold_4d, _, _ = _load_nii(bold_path)
+    aparc, aparc_affine, _ = _load_nii(aparc_path)
+    aparc = aparc.astype(np.int32)
+    if aparc.shape != bold_4d.shape[:3]:
+        return {"status": "missing",
+                "reason": f"aparc {aparc.shape} ≠ task {bold_4d.shape[:3]}"}
+    tr = _read_tr(json_path)
+    n_t = bold_4d.shape[-1]
+    dt = 0.1
+    sub = int(round(tr / dt))
+    total_dt = n_t * sub
+    boxcar = np.zeros(total_dt, dtype=np.float32)
+    with open(events_tsv) as f:
+        header = f.readline().rstrip("\n").split("\t")
+        if "onset" in header and "duration" in header:
+            ions, idur = header.index("onset"), header.index("duration")
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                try:
+                    onset = float(parts[ions])
+                    dur = (float(parts[idur])
+                           if parts[idur] not in ("", "n/a") else dt)
+                except (ValueError, IndexError):
+                    continue
+                i0 = max(0, int(round(onset / dt)))
+                i1 = min(total_dt, int(round((onset + dur) / dt)))
+                if i1 > i0:
+                    boxcar[i0:i1] = 1.0
+
+    region_ids = np.unique(aparc[aparc > 0]).astype(np.int32)
+    means: list[np.ndarray] = []
+    kept: list[int] = []
+    for rid in region_ids:
+        m = aparc == rid
+        if int(m.sum()) < min_voxels:
+            continue
+        ts = bold_4d[m].mean(axis=0)
+        baseline = ts.mean()
+        if baseline <= 0:
+            continue
+        means.append(((ts - baseline) / baseline).astype(np.float32))
+        kept.append(int(rid))
+    if not kept:
+        return {"status": "error", "reason": "no usable regions"}
+    bold_R_N = np.stack(means, axis=0)
+    kept = np.asarray(kept, dtype=np.int32)
+    log.info("riera: %s/%s, %d regions, n_steps=%d", task, run,
+             bold_R_N.shape[0], n_steps)
+
+    import jax
+    import jax.numpy as jnp
+    from vpjax.hemodynamics.inversion import (
+        _RIERA_ALL_NAMES,
+        fit_riera_bold,
+    )
+
+    def _fit_one(b):
+        return fit_riera_bold(
+            b, jnp.asarray(boxcar), tr=tr, dt=dt,
+            fit_names=RIERA_DEFAULT_FIT_NAMES,
+            n_steps=n_steps, learning_rate=learning_rate,
+        )
+    fit_batched = jax.vmap(_fit_one)
+    t0 = time.time()
+    out = fit_batched(jnp.asarray(bold_R_N))
+    log.info("riera: vmap fit done in %.1fs", time.time() - t0)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload: dict = {
+        "subject": subject,
+        "session": session,
+        "task": task,
+        "run": run,
+        "tr": tr,
+        "dt": dt,
+        "n_volumes": int(n_t),
+        "n_regions": int(kept.shape[0]),
+        "region_ids": kept.tolist(),
+        "fit_names": list(RIERA_DEFAULT_FIT_NAMES),
+        "n_steps": n_steps,
+        "learning_rate": learning_rate,
+        "loss": np.asarray(out["loss"]).tolist(),
+    }
+    for name in _RIERA_ALL_NAMES:
+        payload[name] = np.asarray(out[name]).tolist()
+    riera_path.write_text(json.dumps(payload, indent=2))
+    log.info("saved %s", riera_path)
+
+    for name in ("c_no", "kappa_no", "gamma_no", "tau_v"):
+        arr = np.zeros(aparc.shape, dtype=np.float32)
+        vec = np.asarray(out[name])
+        for rid_v, val in zip(kept, vec):
+            arr[aparc == int(rid_v)] = float(val)
+        _save_nii(arr, aparc_affine, out_dir / f"riera_{name}_map.nii.gz")
+
+    return {
+        "status": "ok",
+        "task": task,
+        "run": run,
+        "n_regions": int(kept.shape[0]),
+        "outputs": [str(riera_path)],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
 STAGES = ("cvr", "perfusion", "metabolism", "pet", "pet_petsurfer",
-          "asl_in_t1", "joint", "rest", "task", "identifiability")
+          "asl_in_t1", "joint", "rest", "task", "task_riera",
+          "identifiability")
 
 
 def process_session(subject: str, session: str, *,
@@ -1748,6 +1908,8 @@ def process_session(subject: str, session: str, *,
         manifest["stages"]["rest"] = run_rest_bold(subject, session, force=force)
     if "task" in stages:
         manifest["stages"]["task"] = run_task_bold(subject, session, force=force)
+    if "task_riera" in stages:
+        manifest["stages"]["task_riera"] = run_task_riera(subject, session, force=force)
     if "identifiability" in stages:
         manifest["stages"]["identifiability"] = run_identifiability(subject, session, force=force)
 
