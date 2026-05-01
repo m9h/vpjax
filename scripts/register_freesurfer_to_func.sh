@@ -22,10 +22,20 @@ set -euo pipefail
 
 SUBJECT="${1:?subject required (e.g. sub-1003)}"
 SESSION="${2:?session required (e.g. ses-wave1)}"
+# Optional 3rd arg picks the EPI target.  Default 'cvr' uses
+# task-Hypercapnia preprocessing.  When that's absent (DLBS subjects
+# without CVR), pass 'rest' — DLBS task BOLDs all share the same EPI
+# grid, so the resulting aparc covers rest + task BOLDs equally.
+TARGET="${3:-cvr}"
 
 DS="ds004856"
 FS_ROOT="/data/datasets/smri-fm-cmp/freesurfer/${DS}/${SUBJECT}_${SESSION}/mri"
-CVR_DIR="/data/datasets/smri-fm-cmp/fsl/${DS}/cvr/${SUBJECT}_${SESSION}_run-1"
+case "${TARGET}" in
+    cvr)   FUNC_DIR="/data/datasets/smri-fm-cmp/fsl/${DS}/cvr/${SUBJECT}_${SESSION}_run-1" ;;
+    rest)  FUNC_DIR="/data/datasets/smri-fm-cmp/fsl/${DS}/rest/${SUBJECT}_${SESSION}_run-1" ;;
+    *)     FUNC_DIR="/data/datasets/smri-fm-cmp/fsl/${DS}/task/${TARGET}/${SUBJECT}_${SESSION}_run-1" ;;
+esac
+CVR_DIR="${FUNC_DIR}"   # name kept for local readability of remaining script
 OUT_DIR="/data/datasets/smri-fm-cmp/vpjax/${DS}/${SUBJECT}/${SESSION}/anat-in-cvr"
 WORK_DIR="${OUT_DIR}/_work"
 

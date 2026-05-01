@@ -99,6 +99,23 @@ def out_session_dir(subject: str, session: str) -> Path:
     return VPJAX_ROOT / subject / session
 
 
+def task_fsl_dir(subject: str, session: str, task: str, run_id: str = "run-1") -> Path:
+    """FSL preprocessing dir for a given task BOLD run.
+
+    Mirrors preprocess_func.sh's output layout:
+      cvr/             for task-Hypercapnia
+      rest/            for task-rest
+      task/<name>/     for everything else
+    """
+    if task == "Hypercapnia":
+        sub = "cvr"
+    elif task == "rest":
+        sub = "rest"
+    else:
+        sub = f"task/{task}"
+    return FSL_ROOT / sub / f"{subject}_{session}_{run_id}"
+
+
 # FreeSurfer aparc+aseg cerebellum labels.
 #   - CEREBELLUM_LABELS         = whole cerebellum (cortex + WM) — used by the
 #     vpjax volumetric SUVR helper as a generous reference mask.
@@ -516,7 +533,26 @@ def run_perfusion(subject: str, session: str, *,
     if mask_path.exists():
         brain_mask = _load_nii(mask_path)[0] > 0
     else:
-        brain_mask = m0 > 0
+        # No oxford_asl brain mask available — generate one by running
+        # bet on the M0 estimate.  This is much tighter than the
+        # `m0 > 0` fallback which lets through skull-edge / CSF voxels
+        # with anomalous CBF and inflates the brain-wide CBF mean.
+        m0_for_bet = out_dir / "m0_for_bet.nii.gz"
+        bet_out = out_dir / "m0_brain"
+        _save_nii(m0.astype(np.float32), affine_asl, m0_for_bet)
+        import subprocess
+        try:
+            subprocess.run(
+                ["bet", str(m0_for_bet), str(bet_out), "-R", "-f", "0.3", "-m"],
+                check=True, capture_output=True,
+            )
+            mask_arr = _load_nii(out_dir / "m0_brain_mask.nii.gz")[0]
+            brain_mask = mask_arr > 0
+            log.info("ASL: oxford_asl mask absent — derived brain mask via bet on M0 (%d voxels)",
+                     int(brain_mask.sum()))
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            log.warning("ASL: bet fallback failed, using m0>0 (loose mask)")
+            brain_mask = m0 > 0
     dm_brain_mean = float(delta_m[brain_mask].mean())
     m0_brain_mean = float(m0[brain_mask].mean())
     delta_ratio = dm_brain_mean / m0_brain_mean if m0_brain_mean > 0 else 0.0
@@ -1312,11 +1348,366 @@ def run_identifiability(subject: str, session: str, *,
 
 
 # ---------------------------------------------------------------------------
+# Stage H: rs-fMRI — regional ALFF / fALFF / vasomotion power
+# ---------------------------------------------------------------------------
+
+# rs-fMRI frequency bands.  ALFF (Zang 2007) integrates 0.01–0.08 Hz
+# (canonical low-frequency BOLD).  fALFF (Zou 2008) is ALFF / total
+# spectral power.  Vasomotion is the slow-wave (~0.1 Hz) cerebral
+# arterial pulsation — Mateo 2017 / Bhowmik 2024 — captured here as
+# the integrated power in 0.05–0.15 Hz.
+ALFF_BAND = (0.01, 0.08)
+VASOMOTION_BAND = (0.05, 0.15)
+
+
+def _band_power(signal: np.ndarray, tr: float, band: tuple[float, float]) -> np.ndarray:
+    """Per-region integrated power in [low, high] Hz from FFT magnitude."""
+    n = signal.shape[-1]
+    freqs = np.fft.rfftfreq(n, d=tr)
+    spec = np.abs(np.fft.rfft(signal - signal.mean(axis=-1, keepdims=True), axis=-1))
+    sel = (freqs >= band[0]) & (freqs <= band[1])
+    return spec[..., sel].sum(axis=-1)
+
+
+def run_rest_bold(subject: str, session: str, *,
+                  force: bool = False,
+                  min_voxels: int = 20) -> dict:
+    """Per-region rs-fMRI vascular descriptors across all rest runs.
+
+    For each task-rest BOLD run found in the FSL preprocessing tree:
+      * compute per-region (aparc-in-CVR-style atlas) BOLD time series;
+      * detrend + bandpass;
+      * compute ALFF (0.01-0.08 Hz integrated power), fALFF, and
+        vasomotion-band power (0.05-0.15 Hz);
+      * also compute per-region temporal SD (broadband variance);
+      * spread the per-region scalars to voxelwise NIfTIs.
+
+    Outputs (per session):
+      rest/<run_id>/regional_summary.json         — per-region metrics
+      rest/<run_id>/{alff,falff,vasomotion}_map.nii.gz — voxel maps
+    """
+    out_root = out_session_dir(subject, session) / "rest"
+    aparc_path = anat_in_cvr_dir(subject, session) / "aparc+aseg.nii.gz"
+    aparc_work = anat_work_dir(subject, session) / "aparc+aseg.nii.gz"
+    if not aparc_path.exists() and not aparc_work.exists():
+        return {"status": "missing", "reason": "no aparc available (run register_freesurfer_to_func.sh)"}
+
+    # We need an aparc that lives in the same EPI grid as each rest run.
+    # If `register_freesurfer_to_func.sh` didn't have a CVR target there's
+    # only the FS-space aparc; in that case skip this stage and let the
+    # user re-run register_freesurfer_to_func.sh once REST preprocessing
+    # has produced a mean_func_brain in REST native space.  (The path is
+    # CVR-anchored for now; supporting REST-space registration is a
+    # follow-up.)
+    have_cvr_aparc = aparc_path.exists()
+    if not have_cvr_aparc:
+        return {
+            "status": "missing",
+            "reason": (
+                "aparc-in-CVR not present; the current driver registers FS "
+                "to CVR space (Hypercapnia BOLD).  rs-fMRI lives in a "
+                "different EPI grid — TODO: register FS to REST space."
+            ),
+        }
+
+    # Walk every preprocessed rest run.
+    rest_dirs = sorted((FSL_ROOT / "rest").glob(f"{subject}_{session}_run-*"))
+    if not rest_dirs:
+        return {"status": "missing", "reason": "no rest runs preprocessed"}
+
+    aparc, aparc_affine, _ = _load_nii(aparc_path)
+    aparc = aparc.astype(np.int32)
+
+    results: list[dict] = []
+    for rd in rest_dirs:
+        run_id = rd.name.split("_")[-1]
+        out_dir = out_root / run_id
+        summary_path = out_dir / "regional_summary.json"
+        if not force and summary_path.exists():
+            log.info("rest %s already done, skipping", run_id)
+            results.append({"run_id": run_id, "status": "skipped"})
+            continue
+
+        bold_path = rd / "mc.nii.gz"
+        json_path = (
+            RAW_ROOT / subject / session / "func"
+            / f"{subject}_{session}_task-rest_{run_id}_bold.json"
+        )
+        if not bold_path.exists() or not json_path.exists():
+            results.append({"run_id": run_id, "status": "missing", "reason": "incomplete rest run"})
+            continue
+
+        bold_4d, bold_affine, _ = _load_nii(bold_path)
+        tr = _read_tr(json_path)
+        log.info("rest %s: TR=%.3fs, shape=%s", run_id, tr, bold_4d.shape)
+
+        # Aparc grid must match BOLD grid (both in CVR EPI native).
+        if aparc.shape != bold_4d.shape[:3]:
+            results.append({
+                "run_id": run_id, "status": "missing",
+                "reason": f"aparc shape {aparc.shape} ≠ rest grid {bold_4d.shape[:3]}",
+            })
+            continue
+
+        region_ids = np.unique(aparc[aparc > 0]).astype(np.int32)
+        means: list[np.ndarray] = []
+        kept: list[int] = []
+        for rid in region_ids:
+            m = aparc == rid
+            if int(m.sum()) < min_voxels:
+                continue
+            ts = bold_4d[m].mean(axis=0)
+            baseline = ts.mean()
+            if baseline <= 0:
+                continue
+            means.append((ts - baseline) / baseline)
+            kept.append(int(rid))
+        if not kept:
+            results.append({"run_id": run_id, "status": "error", "reason": "no usable regions"})
+            continue
+        ts_R_N = np.stack(means, axis=0).astype(np.float32)
+        kept = np.asarray(kept, dtype=np.int32)
+
+        alff = _band_power(ts_R_N, tr, ALFF_BAND)
+        total_pow = _band_power(ts_R_N, tr, (0.0, 0.5 / tr))
+        falff = alff / np.maximum(total_pow, 1e-12)
+        vaso = _band_power(ts_R_N, tr, VASOMOTION_BAND)
+        tsd = ts_R_N.std(axis=-1)
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        # voxel maps (broadcast per-region scalar)
+        for label, vec in (("alff", alff), ("falff", falff), ("vasomotion", vaso)):
+            arr = np.zeros(aparc.shape, dtype=np.float32)
+            for rid_v, val in zip(kept, vec):
+                arr[aparc == int(rid_v)] = float(val)
+            _save_nii(arr, aparc_affine, out_dir / f"{label}_map.nii.gz")
+
+        payload = {
+            "run_id": run_id,
+            "tr": tr,
+            "n_volumes": int(bold_4d.shape[-1]),
+            "n_regions": int(kept.shape[0]),
+            "region_ids": kept.tolist(),
+            "alff_band_hz": list(ALFF_BAND),
+            "vasomotion_band_hz": list(VASOMOTION_BAND),
+            "alff": alff.tolist(),
+            "falff": falff.tolist(),
+            "vasomotion_power": vaso.tolist(),
+            "temporal_sd": tsd.tolist(),
+            "note": (
+                "Per-region rs-fMRI descriptors. ALFF = integrated FFT "
+                "amplitude in 0.01-0.08 Hz; fALFF = ALFF / total power; "
+                "vasomotion_power = integrated amplitude in 0.05-0.15 Hz; "
+                "temporal_sd = std(fractional BOLD) over time."
+            ),
+        }
+        summary_path.write_text(json.dumps(payload, indent=2))
+        log.info("saved %s", summary_path)
+        results.append({
+            "run_id": run_id,
+            "status": "ok",
+            "n_regions": int(kept.shape[0]),
+            "alff_mean": float(alff.mean()),
+            "vasomotion_mean": float(vaso.mean()),
+        })
+
+    return {"status": "ok" if results else "missing", "runs": results}
+
+
+# ---------------------------------------------------------------------------
+# Stage I: task-fMRI — per-region OLS regression-β on events.tsv stimulus
+# ---------------------------------------------------------------------------
+
+DLBS_TASKS = ("Scenes", "VentralVisual", "Words")
+
+
+def _hrf_kernel(tr: float, length_s: float = 30.0) -> np.ndarray:
+    """Single-gamma HRF (Glover 1999, simplified, peak ~6 s)."""
+    t = np.arange(0, length_s + tr, tr)
+    h = (t / 6.0) ** 5.0 * np.exp(-(t / 6.0))
+    return h / h.max()
+
+
+def _events_to_boxcar(events_tsv: Path, n_volumes: int, tr: float) -> np.ndarray:
+    """Build a 0/1 boxcar at TR resolution from a BIDS events.tsv.
+
+    Aggregates all event types — captures any task-driven stimulus
+    regardless of label — which is what we want for a generic
+    regression-β estimate at this stage.
+    """
+    boxcar = np.zeros(n_volumes, dtype=np.float32)
+    with open(events_tsv) as f:
+        header = f.readline().rstrip("\n").split("\t")
+        if "onset" not in header or "duration" not in header:
+            return boxcar
+        ions, idur = header.index("onset"), header.index("duration")
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            try:
+                onset = float(parts[ions])
+                dur = float(parts[idur]) if parts[idur] not in ("", "n/a") else tr
+            except (ValueError, IndexError):
+                continue
+            i0 = int(round(onset / tr))
+            i1 = int(round((onset + dur) / tr))
+            i0, i1 = max(0, i0), min(n_volumes, i1)
+            if i1 > i0:
+                boxcar[i0:i1] = 1.0
+    return boxcar
+
+
+def run_task_bold(subject: str, session: str, *,
+                  force: bool = False,
+                  min_voxels: int = 20,
+                  tasks: Sequence[str] = DLBS_TASKS) -> dict:
+    """Per-region task-evoked regression-β across all DLBS task BOLDs.
+
+    For each task in ``tasks`` and every run on disk:
+      * read BIDS events.tsv → 0/1 boxcar at TR
+      * convolve with canonical HRF
+      * OLS regress per-region BOLD on (HRF·stim, linear_drift, 1)
+      * report per-region β, r, and a CVR-style scalar (max-min of
+        fitted response).
+
+    Output: task/<name>/<run_id>/regional_summary.json + voxelwise
+    beta_map.nii.gz under the session output dir.
+    """
+    aparc_path = anat_in_cvr_dir(subject, session) / "aparc+aseg.nii.gz"
+    if not aparc_path.exists():
+        return {"status": "missing", "reason": "aparc-in-CVR missing — run register_freesurfer_to_func.sh"}
+
+    aparc, aparc_affine, _ = _load_nii(aparc_path)
+    aparc = aparc.astype(np.int32)
+    region_ids_all = np.unique(aparc[aparc > 0]).astype(np.int32)
+
+    out_root = out_session_dir(subject, session) / "task"
+    results: list[dict] = []
+    for task in tasks:
+        task_dirs = sorted((FSL_ROOT / "task" / task).glob(
+            f"{subject}_{session}_run-*"))
+        for td in task_dirs:
+            run_id = td.name.split("_")[-1]
+            out_dir = out_root / task / run_id
+            summary_path = out_dir / "regional_summary.json"
+            if not force and summary_path.exists():
+                log.info("task %s/%s already done, skipping", task, run_id)
+                results.append({"task": task, "run_id": run_id, "status": "skipped"})
+                continue
+
+            bold_path = td / "mc.nii.gz"
+            events_tsv = (
+                RAW_ROOT / subject / session / "func"
+                / f"{subject}_{session}_task-{task}_{run_id}_events.tsv"
+            )
+            json_path = (
+                RAW_ROOT / subject / session / "func"
+                / f"{subject}_{session}_task-{task}_{run_id}_bold.json"
+            )
+            if not bold_path.exists() or not json_path.exists():
+                results.append({"task": task, "run_id": run_id, "status": "missing"})
+                continue
+            if not events_tsv.exists():
+                # Some runs may be missing events; skip them rather than
+                # error out the whole subject.
+                results.append({"task": task, "run_id": run_id,
+                                "status": "missing", "reason": "no events.tsv"})
+                continue
+
+            bold_4d, _, _ = _load_nii(bold_path)
+            if aparc.shape != bold_4d.shape[:3]:
+                results.append({
+                    "task": task, "run_id": run_id, "status": "missing",
+                    "reason": f"aparc shape {aparc.shape} ≠ task grid {bold_4d.shape[:3]}",
+                })
+                continue
+            tr = _read_tr(json_path)
+            n = bold_4d.shape[-1]
+
+            boxcar = _events_to_boxcar(events_tsv, n, tr)
+            hrf = _hrf_kernel(tr)
+            stim_conv = np.convolve(boxcar, hrf, mode="full")[:n]
+            stim_conv = stim_conv - stim_conv.mean()
+            drift = (np.arange(n) - (n - 1) / 2) / n
+            drift = drift - drift.mean()
+            X = np.stack([stim_conv, drift, np.ones(n)], axis=1)
+            try:
+                XtX_inv = np.linalg.inv(X.T @ X)
+            except np.linalg.LinAlgError:
+                results.append({"task": task, "run_id": run_id,
+                                "status": "error", "reason": "design rank-deficient"})
+                continue
+
+            means: list[np.ndarray] = []
+            kept: list[int] = []
+            for rid in region_ids_all:
+                m = aparc == rid
+                if int(m.sum()) < min_voxels:
+                    continue
+                ts = bold_4d[m].mean(axis=0)
+                baseline = ts.mean()
+                if baseline <= 0:
+                    continue
+                means.append((ts - baseline) / baseline)
+                kept.append(int(rid))
+            if not kept:
+                results.append({"task": task, "run_id": run_id,
+                                "status": "error", "reason": "no usable regions"})
+                continue
+            Y = np.stack(means, axis=0).T  # (N, R)
+            kept = np.asarray(kept, dtype=np.int32)
+            beta_full = XtX_inv @ X.T @ Y                                     # (3, R)
+            fitted = X @ beta_full                                            # (N, R)
+            resid = Y - fitted
+            var_y = Y.var(axis=0)
+            r2 = 1.0 - resid.var(axis=0) / np.where(var_y > 1e-12, var_y, 1e-12)
+            r2 = np.clip(r2, 0.0, 1.0)
+            r_signed = np.sign(beta_full[0]) * np.sqrt(r2)
+
+            out_dir.mkdir(parents=True, exist_ok=True)
+            beta_map = np.zeros(aparc.shape, dtype=np.float32)
+            for rid_v, b in zip(kept, beta_full[0]):
+                beta_map[aparc == int(rid_v)] = float(b)
+            _save_nii(beta_map, aparc_affine, out_dir / "beta_map.nii.gz")
+
+            payload = {
+                "task": task,
+                "run_id": run_id,
+                "tr": tr,
+                "n_volumes": int(n),
+                "n_regions": int(kept.shape[0]),
+                "n_events": int((boxcar > 0).sum()),
+                "region_ids": kept.tolist(),
+                "regression_beta": beta_full[0].tolist(),
+                "regression_r": r_signed.tolist(),
+                "drift_coef": beta_full[1].tolist(),
+                "intercept": beta_full[2].tolist(),
+                "note": (
+                    "Per-region OLS β of fractional-BOLD on HRF-convolved "
+                    "events boxcar (single-gamma HRF, peak ~6 s) plus linear "
+                    "drift + intercept.  Aggregates all event rows in the "
+                    "events.tsv (no event-type modelling)."
+                ),
+            }
+            summary_path.write_text(json.dumps(payload, indent=2))
+            log.info("saved %s (β mean=%.5f, mean|r|=%.3f)",
+                     summary_path, float(beta_full[0].mean()),
+                     float(np.mean(np.abs(r_signed))))
+            results.append({
+                "task": task, "run_id": run_id, "status": "ok",
+                "n_regions": int(kept.shape[0]),
+                "beta_mean": float(beta_full[0].mean()),
+                "r_mean_abs": float(np.mean(np.abs(r_signed))),
+            })
+
+    return {"status": "ok" if results else "missing", "runs": results}
+
+
+# ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
 
 STAGES = ("cvr", "perfusion", "metabolism", "pet", "pet_petsurfer",
-          "asl_in_t1", "joint", "identifiability")
+          "asl_in_t1", "joint", "rest", "task", "identifiability")
 
 
 def process_session(subject: str, session: str, *,
@@ -1353,6 +1744,10 @@ def process_session(subject: str, session: str, *,
         manifest["stages"]["joint"] = run_joint_amyloid_cmro2(
             subject, session, tracer=tracer, force=force,
         )
+    if "rest" in stages:
+        manifest["stages"]["rest"] = run_rest_bold(subject, session, force=force)
+    if "task" in stages:
+        manifest["stages"]["task"] = run_task_bold(subject, session, force=force)
     if "identifiability" in stages:
         manifest["stages"]["identifiability"] = run_identifiability(subject, session, force=force)
 
