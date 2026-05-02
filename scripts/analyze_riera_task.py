@@ -77,7 +77,8 @@ def _events_to_boxcar_dt(events_tsv: Path, total_dt: int, dt: float) -> np.ndarr
 
 def main(subject: str, session: str, task: str, run: str,
          n_steps: int = 600, learning_rate: float = 2.0,
-         min_voxels: int = 20, optimizer: str = "momentum") -> int:
+         min_voxels: int = 20, optimizer: str = "momentum",
+         prior_strength: float = 0.0) -> int:
     out_dir = VPJAX_ROOT / subject / session / "task" / task / run
     out_dir.mkdir(parents=True, exist_ok=True)
     riera_path = out_dir / "riera_params.json"
@@ -140,7 +141,7 @@ def main(subject: str, session: str, task: str, run: str,
             bold_one, jnp.asarray(stim), tr=tr, dt=dt,
             fit_names=DEFAULT_RIERA_FIT,
             n_steps=n_steps, learning_rate=learning_rate,
-            optimizer=optimizer,
+            optimizer=optimizer, prior_strength=prior_strength,
         )
     fit_batched = jax.vmap(_fit_one)
 
@@ -194,6 +195,10 @@ if __name__ == "__main__":
     parser.add_argument("--learning-rate", type=float, default=2.0)
     parser.add_argument("--optimizer", choices=("momentum", "adam"),
                         default="momentum")
+    parser.add_argument("--prior-strength", type=float, default=0.0,
+                        help="Gaussian prior strength on (θ−θ_lit)/σ; "
+                             "0 = no prior, ~1e-3 = soft, ~1e-2 = strong")
     args = parser.parse_args()
     sys.exit(main(args.subject, args.session, args.task, args.run,
-                  args.n_steps, args.learning_rate, optimizer=args.optimizer))
+                  args.n_steps, args.learning_rate, optimizer=args.optimizer,
+                  prior_strength=args.prior_strength))

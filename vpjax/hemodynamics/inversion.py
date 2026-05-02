@@ -365,6 +365,7 @@ def fit_riera_bold(
     n_steps: int = 800,
     learning_rate: float = 2.0,
     optimizer: str = "momentum",
+    prior_strength: float = 0.0,
 ) -> dict[str, Float[Array, ""]]:
     """Fit Riera NVC parameters to a BOLD time series.
 
@@ -407,6 +408,18 @@ def fit_riera_bold(
     # Cache the base (fixed) parameter values
     base_vals = {name: getattr(riera_params, name) for name in _RIERA_ALL_NAMES}
 
+    # Prior centring + scale.  Centre = the supplied (literature)
+    # value; σ = (hi - lo) / 4 from _RIERA_BOUNDS, so the bounds sit
+    # at roughly ±2σ from the mean.  prior_strength=0 disables the
+    # prior; positive values trade fit-MSE for parameter regularity
+    # toward the literature defaults.
+    prior_centre = jnp.array(
+        [float(getattr(riera_params, n)) for n in fit_names]
+    )
+    prior_sigma = jnp.array(
+        [(_RIERA_BOUNDS[n][1] - _RIERA_BOUNDS[n][0]) / 4.0 for n in fit_names]
+    )
+
     def _make_params(theta):
         vals = dict(base_vals)
         for i, name in enumerate(fit_names):
@@ -424,7 +437,9 @@ def fit_riera_bold(
             s=jnp.zeros_like(v), f=traj.f_a, v=v, q=q,
         )
         bold_pred = observe_bold(pseudo, bold_params)[::subsample][:n]
-        return jnp.mean((bold_pred - bold_data) ** 2)
+        mse = jnp.mean((bold_pred - bold_data) ** 2)
+        prior = jnp.mean(((theta - prior_centre) / prior_sigma) ** 2)
+        return mse + prior_strength * prior
 
     if optimizer not in ("momentum", "adam"):
         raise ValueError(f"unknown optimizer: {optimizer!r}")
