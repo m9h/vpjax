@@ -77,7 +77,7 @@ def _events_to_boxcar_dt(events_tsv: Path, total_dt: int, dt: float) -> np.ndarr
 
 def main(subject: str, session: str, task: str, run: str,
          n_steps: int = 600, learning_rate: float = 2.0,
-         min_voxels: int = 20) -> int:
+         min_voxels: int = 20, optimizer: str = "momentum") -> int:
     out_dir = VPJAX_ROOT / subject / session / "task" / task / run
     out_dir.mkdir(parents=True, exist_ok=True)
     riera_path = out_dir / "riera_params.json"
@@ -140,6 +140,7 @@ def main(subject: str, session: str, task: str, run: str,
             bold_one, jnp.asarray(stim), tr=tr, dt=dt,
             fit_names=DEFAULT_RIERA_FIT,
             n_steps=n_steps, learning_rate=learning_rate,
+            optimizer=optimizer,
         )
     fit_batched = jax.vmap(_fit_one)
 
@@ -191,6 +192,8 @@ if __name__ == "__main__":
     parser.add_argument("run")
     parser.add_argument("--n-steps", type=int, default=600)
     parser.add_argument("--learning-rate", type=float, default=2.0)
+    parser.add_argument("--optimizer", choices=("momentum", "adam"),
+                        default="momentum")
     args = parser.parse_args()
     sys.exit(main(args.subject, args.session, args.task, args.run,
-                  args.n_steps, args.learning_rate))
+                  args.n_steps, args.learning_rate, optimizer=args.optimizer))

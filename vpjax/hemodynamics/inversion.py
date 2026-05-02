@@ -364,6 +364,7 @@ def fit_riera_bold(
     fit_names: tuple[str, ...] = _RIERA_DEFAULT_FIT,
     n_steps: int = 800,
     learning_rate: float = 2.0,
+    optimizer: str = "momentum",
 ) -> dict[str, Float[Array, ""]]:
     """Fit Riera NVC parameters to a BOLD time series.
 
@@ -425,17 +426,42 @@ def fit_riera_bold(
         bold_pred = observe_bold(pseudo, bold_params)[::subsample][:n]
         return jnp.mean((bold_pred - bold_data) ** 2)
 
-    @jax.jit
-    def step(th, vel):
-        g = jax.grad(loss_fn)(th)
-        safe = jnp.all(jnp.isfinite(g))
-        vel = jnp.where(safe, 0.9 * vel + 0.1 * g, vel)
-        th = jnp.where(safe, th - learning_rate * vel, th)
-        return th, vel
+    if optimizer not in ("momentum", "adam"):
+        raise ValueError(f"unknown optimizer: {optimizer!r}")
 
-    velocity = jnp.zeros_like(theta)
+    if optimizer == "momentum":
+        @jax.jit
+        def step(th, state):
+            vel = state
+            g = jax.grad(loss_fn)(th)
+            safe = jnp.all(jnp.isfinite(g))
+            vel = jnp.where(safe, 0.9 * vel + 0.1 * g, vel)
+            th = jnp.where(safe, th - learning_rate * vel, th)
+            return th, vel
+        state = jnp.zeros_like(theta)
+    else:
+        # Adam (Kingma 2014).  Per-parameter adaptive step keeps the
+        # well-conditioned directions tractable without overshooting the
+        # ill-conditioned ones into the parameter clips.  Pair with
+        # learning_rate ~ 0.01-0.05 (Adam's natural range).
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+        @jax.jit
+        def step(th, state):
+            m, v, t = state
+            t = t + 1
+            g = jax.grad(loss_fn)(th)
+            safe = jnp.all(jnp.isfinite(g))
+            m = jnp.where(safe, beta1 * m + (1 - beta1) * g, m)
+            v = jnp.where(safe, beta2 * v + (1 - beta2) * (g ** 2), v)
+            m_hat = m / (1.0 - beta1 ** t)
+            v_hat = v / (1.0 - beta2 ** t)
+            update = learning_rate * m_hat / (jnp.sqrt(v_hat) + eps)
+            th = jnp.where(safe, th - update, th)
+            return th, (m, v, t)
+        state = (jnp.zeros_like(theta), jnp.zeros_like(theta), jnp.array(0))
+
     for _ in range(n_steps):
-        theta, velocity = step(theta, velocity)
+        theta, state = step(theta, state)
 
     # Final forward pass
     rp_final = _make_params(theta)
