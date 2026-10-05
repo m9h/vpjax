@@ -37,6 +37,7 @@ tutorials/balloon_windkessel
 tutorials/sleep_physiology
 tutorials/riera_nvc
 tutorials/cardiac_coupling
+tutorials/dmt_shared_drive
 ```
 
 ## API Reference
