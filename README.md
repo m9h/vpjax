@@ -305,6 +305,88 @@ That figure describes the estimator under this model, not any recording.
 A model misspecified in a way EEG cannot see would show the same benefit
 here and none in practice, so treat it as an upper bound.
 
+### Simultaneous, or just EEG?
+
+The obvious objection is that EEG recorded in a separate session, outside
+the bore, would supply the same constraint without the gradient and
+pulse artifacts. `scripts/simultaneity_case.py` tests that over several
+seeds (three here; 360 s, TR 2 s, 10 Hz envelope, 4 restarts):
+
+| arm | identifiable | κ | τ | τ_z | q_z |
+|---|---|---|---|---|---|
+| BOLD only | 0/3 | 0.21 | 0.18 | 3.5 | 7.1 |
+| BOLD + EEG, envelope SNR 3 | 3/3 | 0.024 | 0.027 | 0.12 | 0.05 |
+| BOLD + EEG, envelope SNR 1 | 3/3 | 0.040 | 0.042 | 0.14 | 0.11 |
+| BOLD + EEG, envelope SNR 0.25 | 3/3 | 0.11 | 0.12 | 0.24 | 0.34 |
+| BOLD + EEG, envelope SNR 0.1 | 0/3 | 0.18 | 0.23 | 0.39 | 0.67 |
+| BOLD + EEG, envelope SNR 0.05 | 0/3 | 0.20 | 0.19 | 0.73 | 1.4 |
+| BOLD only, τ_z known | 3/3 | 0.21 | 0.27 | — | 0.24 |
+| BOLD only, τ_z and q_z known | 3/3 | 0.18 | 0.28 | — | — |
+
+(median relative standard errors across seeds.)
+
+Two things follow. The in-scanner envelope does not have to be clean: at
+SNR 0.25, mostly noise after artifact removal, it still identifies every
+parameter, with precision degrading smoothly by about 4× across the
+sweep; the breakeven lies between 0.25 and 0.1, where the likelihood is
+still curved in every direction but the drive diffusion's standard
+error passes 50%. And a separate session, idealised as perfect knowledge of the
+drive's statistics, restores formal identifiability but leaves the
+hemodynamic parameters at 20–28% — worse than simultaneous EEG at SNR
+0.25, and 5–7× worse than at SNR 1. What a separate session cannot
+supply is the drive's *realisation*, and that is what resolves the
+κ–τ ridge. For a drug whose effect is a single non-stationary pass
+through one run there is no trial structure to average over, so the
+realisation is the only thing there is.
+
+The same script scores the drug contrast directly: a shape-only input
+(unit-peak two-exponential, every time scale from the command line)
+enters the drive with a gain `beta`, and `beta` is estimated alongside
+the rest. With BOLD alone `beta` was identifiable in one seed of three,
+at a relative SE of 0.33; with the envelope it was identifiable in all
+three at 0.12. The fast channel does not just sharpen the baseline
+parameters, it is what makes the drug effect an estimable quantity.
+
+### On a recording
+
+`scripts/validate_ds003768_statespace.py` runs the same two arms on a
+10-minute resting run from OpenNeuro ds003768 (32-channel Brain Products
+EEG at 5 kHz inside a 3T Prisma, TR 2.1 s), using the global BOLD mean
+and the occipital alpha envelope at 10 Hz after gradient and pulse
+artifact subtraction (`validation/eeg_artifacts.py`, a deliberately
+plain AAS baseline). Nothing is known here, so the noise variances and
+the EEG loading are estimated too. On sub-01, run 1:
+
+- **BOLD only** reproduces the simulation's pathology on real data: the
+  innovations are white (variance 0.99, lag-1 0.00) and the fit is not
+  identifiable (curvature ratio −2e-5), with the drive collapsed to white
+  noise (τ_z = 0.02 s, q_z = 24, relative SEs 3.4 and 6.8).
+- **BOLD + EEG with one shared state** is rejected by whiteness: the fit
+  pins the state to the envelope, drives the EEG noise variance to zero,
+  and leaves the BOLD innovations autocorrelated at 0.89. The alpha
+  envelope has structure at 0.1–0.3 s that no drive passing through the
+  Balloon can share with a 2 s BOLD series.
+- **BOLD + EEG with an EEG-specific nuisance state** (a fast OU process
+  the BOLD never sees; the default in `eeg_fmri_statespace`) is
+  calibrated on both channels (BOLD 0.99 / 0.01, EEG 1.00 / 0.11) and
+  248 log-likelihood units better. The shared drive comes out at
+  τ_z = 2.2 s with a negative alpha loading, as the alpha–BOLD literature
+  would predict, but its parameters are weakly determined (relative SEs
+  0.3–0.9) and the arm is not identifiable as a whole: the EEG noise
+  variance is redundant with a 0.18 s nuisance process sampled at 0.1 s.
+
+The useful number is the one the last arm implies. The shared drive
+accounts for about 10% of the envelope's SD — roughly 1% of its
+variance — so the *effective* SNR of a global alpha envelope with respect
+to the drive a global BOLD series sees is around 0.1 — right at the
+sweep's breakeven. That is the gap between the simulation and a recording,
+and it is a property of the global average at rest, not of the method:
+regional pairings (occipital alpha against visual cortex) and a run with
+a drive worth the name — a task, or a drug — raise the shared fraction,
+and the identifiability machinery says by how much before anyone is
+scanned. Whether a protocol clears the bar is now a computation with
+inputs the lab controls.
+
 ## Dependencies
 
 - JAX

@@ -239,3 +239,65 @@ class TestRecovery:
         assert set(c["both"]["channels"]) == {"bold", "eeg"}
         text = format_comparison(c)
         assert "err ratio" in text and "innovation whiteness" in text
+
+
+class TestDrugInput:
+    """A deterministic input through the drive, with its gain estimated."""
+
+    def test_shape_is_unit_peak_and_causal(self):
+        from vpjax.validation.statespace_recovery import drug_shaped_input
+        u = drug_shaped_input(onset=30.0, rise=10.0, decay=60.0)
+        t = np.arange(0.0, 300.0, 0.5)
+        v = u(t)
+        assert np.all(v[t < 30.0] == 0.0)
+        assert np.isclose(v.max(), 1.0)
+        assert v[-1] < 0.1
+
+    def test_shape_rejects_bad_timescales(self):
+        from vpjax.validation.statespace_recovery import drug_shaped_input
+        with pytest.raises(ValueError):
+            drug_shaped_input(0.0, 60.0, 10.0)
+
+    def test_simulation_carries_input_and_beta(self):
+        from vpjax.validation.statespace_recovery import (
+            default_fit_names, drug_shaped_input, simulate,
+        )
+        u = drug_shaped_input(20.0, 10.0, 40.0)
+        sim = simulate(duration=120.0, drive_input=u, beta=0.3, seed=0)
+        assert sim["truth"]["beta"] == 0.3
+        assert sim["u_fine"].shape == sim["t_fine"].shape
+        assert default_fit_names(sim)[-1] == "beta"
+        # The input pushes the drive well above its resting fluctuations.
+        assert sim["x"][:, 0].max() > 5 * sim["drive_sd"]
+
+    def test_without_input_beta_is_not_exposed(self):
+        from vpjax.validation.statespace_recovery import (
+            _build_model, default_fit_names, make_grid, simulate,
+        )
+        sim = simulate(duration=60.0, seed=0)
+        assert "beta" not in default_fit_names(sim)
+        with pytest.raises(ValueError, match="only estimable"):
+            _build_model(make_grid(sim), sim, ("kappa", "beta"))
+
+    def test_fit_subset_fixes_the_rest(self):
+        from vpjax.validation.statespace_recovery import fit_simulation, simulate
+        sim = simulate(duration=60.0, seed=0)
+        r = fit_simulation(sim, restarts=0, max_steps=5, fit_names=("kappa", "tau"))
+        assert r["fit_names"] == ("kappa", "tau")
+        assert set(r["estimate"]) == {"kappa", "tau"}
+        assert set(r["standard_error"]) == {"kappa", "tau"}
+
+    @pytest.mark.slow
+    def test_beta_recovered_with_eeg(self):
+        from vpjax.validation.statespace_recovery import (
+            drug_shaped_input, fit_simulation, simulate,
+        )
+        # Same configuration as scripts/simultaneity_case.py's drug arm:
+        # a slow input over a 6-minute run, where the gain is identified
+        # at a relative SE near 0.1 with the fast channel present.
+        u = drug_shaped_input(60.0, 30.0, 240.0)
+        sim = simulate(duration=360.0, drive_input=u, beta=0.5, seed=0)
+        r = fit_simulation(sim, use_eeg=True, restarts=4)
+        assert r["identifiable"]
+        assert r["standard_error"]["beta"] < 0.2
+        assert r["relative_error"]["beta"] < 3 * r["standard_error"]["beta"]

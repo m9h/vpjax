@@ -111,10 +111,19 @@ def augmented_drift(
     gamma: Float[Array, ""],
     alpha: Float[Array, ""],
     E0: Float[Array, ""],
+    beta: Float[Array, ""] = 0.0,
 ):
-    """Build ``f(t, x, args)`` for the drive-plus-Balloon system."""
+    """Build ``f(t, x, args)`` for the drive-plus-Balloon system.
+
+    ``beta`` is the gain on an exogenous input ``u(t)`` -- a drug
+    effect-site or occupancy time course, for instance.  The input
+    arrives through ``args`` as ``(static_args, u_k)``, which is the
+    convention :func:`vpjax.statespace.ll_filter` uses for its
+    ``inputs`` argument; with plain ``args`` there is no input.
+    """
 
     def drift(t, x, args):
+        u = args[1] if isinstance(args, tuple) else 0.0
         z, s = x[Z], x[S]
         f = jnp.maximum(x[F], _FLOOR)
         v = jnp.maximum(x[V], _FLOOR)
@@ -124,7 +133,7 @@ def augmented_drift(
         extraction = 1.0 - jnp.power(1.0 - E0, 1.0 / f)
 
         return jnp.array([
-            -z / tau_z,
+            -z / tau_z + beta * u,
             z - kappa * s - gamma * (f - 1.0),
             s,
             (f - fout) / tau,
@@ -154,6 +163,35 @@ def baseline_state() -> Float[Array, "5"]:
     return jnp.array([0.0, 0.0, 1.0, 1.0, 1.0])
 
 
+def drug_shaped_input(
+    onset: float, rise: float, decay: float
+):
+    """A unit-peak two-exponential (Bateman-shaped) input ``u(t)``.
+
+    This is a *shape*, not a pharmacokinetic model of any compound: it
+    has the qualitative form of an effect-site curve after a single
+    administration -- zero before *onset*, rising on the time scale
+    *rise*, decaying on the time scale *decay* -- and is normalised to
+    peak at one so that ``beta`` in :func:`augmented_drift` is the
+    peak drive in the drive's own units.  Every number that would make
+    it a model of a specific drug (the two time scales and the gain)
+    is supplied by the caller.  For real PK/PD input use
+    :mod:`vpjax.pharmacokinetics`.
+    """
+    if not (rise > 0 and decay > rise):
+        raise ValueError("need 0 < rise < decay for a single-peaked input")
+
+    def u(t):
+        t = np.asarray(t, dtype=float)
+        s = np.clip(t - onset, 0.0, None)
+        raw = np.exp(-s / decay) - np.exp(-s / rise)
+        t_peak = (rise * decay / (decay - rise)) * np.log(decay / rise)
+        peak = np.exp(-t_peak / decay) - np.exp(-t_peak / rise)
+        return np.where(t >= onset, raw / peak, 0.0)
+
+    return u
+
+
 def simulate(
     duration: float = 360.0,
     dt: float = 0.01,
@@ -167,6 +205,8 @@ def simulate(
     balloon: BalloonParams | None = None,
     bold_params: BOLDParams | None = None,
     seed: int = 0,
+    drive_input=None,
+    beta: float = 0.0,
 ) -> dict:
     """Simulate a resting EEG-fMRI run from the augmented model.
 
@@ -197,6 +237,13 @@ def simulate(
     balloon  : BalloonParams; defaults to the Friston/Stephan values
     bold_params : BOLDParams; defaults to 3T
     seed     : RNG seed
+    drive_input : optional callable ``u(t)`` evaluated on the fine grid,
+               e.g. :func:`drug_shaped_input`.  Enters the drive as
+               ``beta * u(t)``.  With no input the run is stationary
+               resting state.
+    beta     : gain on ``drive_input``, in the drive's units.  Only
+               meaningful with an input; recorded in ``truth`` and
+               estimated by :func:`fit_simulation` when nonzero.
 
     Returns
     -------
@@ -210,7 +257,7 @@ def simulate(
     alpha = float(bp.alpha)
     E0 = float(bp.E0)
 
-    drift = augmented_drift(kappa, tau, tau_z, gamma, alpha, E0)
+    drift = augmented_drift(kappa, tau, tau_z, gamma, alpha, E0, beta)
     observe = augmented_observation(bold_params)
 
     # Stationary SD of the OU drive: Var[z] = q_z tau_z / 2.
@@ -225,10 +272,18 @@ def simulate(
     rng = np.random.default_rng(seed)
     noise = rng.normal(scale=np.sqrt(q_z * dt), size=n)
 
+    u_fine = (
+        np.zeros(n) if drive_input is None
+        else np.asarray(drive_input(t_fine), dtype=float)
+    )
+    if u_fine.shape != (n,):
+        raise ValueError("drive_input must return one value per fine-grid time")
+
     x = np.zeros((n, 5))
     x[0] = np.asarray(baseline_state())
+    step = jax.jit(drift)
     for k in range(1, n):
-        dx = np.asarray(drift(0.0, jnp.asarray(x[k - 1]), None))
+        dx = np.asarray(step(0.0, jnp.asarray(x[k - 1]), (None, u_fine[k - 1])))
         x[k] = x[k - 1] + dx * dt
         x[k, Z] += noise[k - 1]
 
@@ -242,10 +297,11 @@ def simulate(
     return {
         "truth": {
             "kappa": kappa, "tau": tau, "tau_z": tau_z, "q_z": q_z,
-            "gamma": gamma, "alpha": alpha, "E0": E0,
+            "gamma": gamma, "alpha": alpha, "E0": E0, "beta": beta,
         },
         "t_fine": t_fine,
         "x": x,
+        "u_fine": u_fine,
         "t_eeg": t_fine[i_eeg],
         "eeg": y_clean[i_eeg, 0] + rng.normal(scale=eeg_sd, size=i_eeg.size),
         "t_bold": t_fine[i_bold],
@@ -289,18 +345,47 @@ def make_grid(
 
 
 _FIT_NAMES = ("kappa", "tau", "tau_z", "q_z")
+_INPUT_NAMES = _FIT_NAMES + ("beta",)
 
 
-def _build_model(grid: ObservationGrid, sim: dict, jitter: float = 1e-8):
+def default_fit_names(sim: dict) -> tuple[str, ...]:
+    """The parameters a simulation exposes: ``beta`` only with an input."""
+    return _INPUT_NAMES if sim["truth"].get("beta", 0.0) != 0.0 else _FIT_NAMES
+
+
+def _build_model(
+    grid: ObservationGrid,
+    sim: dict,
+    fit_names: tuple[str, ...] = _FIT_NAMES,
+    jitter: float = 1e-8,
+):
     """Return a ``build(theta)`` closure for :func:`fit_statespace`.
 
-    Only the four parameters in ``_FIT_NAMES`` are estimated. ``gamma``,
-    ``alpha`` and ``E0`` are held at their simulated values because they
-    are not identifiable from BOLD alone (Stephan et al. 2007), and
-    leaving them free would confound this comparison with a separate
-    question.
+    ``theta`` holds the parameters named in *fit_names*, in that order;
+    every other parameter is held at its simulated value.  Fixing a
+    parameter at truth is how a "known from elsewhere" counterfactual is
+    expressed -- a drive time constant supplied by a separate EEG
+    session, say -- so the subset is a modelling choice, not a
+    convenience. ``gamma``, ``alpha`` and ``E0`` are never free: they are
+    not identifiable from BOLD alone (Stephan et al. 2007), and leaving
+    them free would confound this comparison with a separate question.
+
+    If the simulation carries an input, it is sampled onto the grid and
+    passed to the filter as ``inputs``.  The input is a known smooth
+    deterministic function, so sampling it is not interpolation of data.
     """
     truth = sim["truth"]
+    unknown = set(fit_names) - set(_INPUT_NAMES)
+    if unknown:
+        raise ValueError(f"cannot fit {sorted(unknown)}; choose from {_INPUT_NAMES}")
+    if "beta" in fit_names and truth.get("beta", 0.0) == 0.0:
+        raise ValueError("beta is only estimable from a simulation with an input")
+    free = {n: i for i, n in enumerate(fit_names)}
+    u_fine = sim.get("u_fine")
+    inputs = (
+        None if u_fine is None or not np.any(u_fine)
+        else jnp.asarray(np.interp(np.asarray(grid.t), sim["t_fine"], u_fine))
+    )
     has_eeg = "eeg" in grid.channels
     # Channel order follows grid.channels, which follows insertion order.
     eeg_col = grid.channels.index("eeg") if has_eeg else None
@@ -316,22 +401,29 @@ def _build_model(grid: ObservationGrid, sim: dict, jitter: float = 1e-8):
         return out.at[eeg_col].set(both[0]).at[bold_col].set(both[1])
 
     def build(theta):
-        kappa, tau, tau_z, q_z = theta
+        def get(name):
+            return theta[free[name]] if name in free else truth[name]
+
+        kappa, tau, tau_z, q_z = (get(n) for n in _FIT_NAMES)
+        beta = get("beta") if "beta" in truth else 0.0
         Qm = jnp.zeros((5, 5)).at[Z, Z].set(q_z)
         # A floor on the hemodynamic states' process noise keeps the
         # predicted covariance invertible for the smoother; it is six
         # orders below the drive noise and does not shape the fit.
         Qm = Qm + jitter * jnp.eye(5)
-        return {
+        spec = {
             "f": augmented_drift(
                 kappa, tau, tau_z,
-                truth["gamma"], truth["alpha"], truth["E0"],
+                truth["gamma"], truth["alpha"], truth["E0"], beta,
             ),
             "h": h,
             "Q": Qm,
             "m0": baseline_state(),
             "P0": jnp.diag(jnp.array([1.0, 0.1, 0.1, 0.01, 0.01])),
         }
+        if inputs is not None:
+            spec["inputs"] = inputs
+        return spec
 
     return build
 
@@ -354,8 +446,12 @@ def fit_simulation(
     max_steps: int = 200,
     restarts: int = 8,
     seed: int = 1,
+    fit_names: tuple[str, ...] | None = None,
 ) -> dict:
     """Fit the augmented model to a simulation and score the recovery.
+
+    *fit_names* selects the free parameters (default: all the simulation
+    exposes, see :func:`default_fit_names`); the rest are fixed at truth.
 
     Restarts are on by default and necessary, not cautious. ``kappa``
     and ``tau`` both set the width of the hemodynamic impulse response,
@@ -372,8 +468,9 @@ def fit_simulation(
     ``log_likelihood``, ``diagnostics`` (innovation whiteness), ``success``,
     ``n_obs``, and ``log_likelihood_by_start``.
     """
+    fit_names = default_fit_names(sim) if fit_names is None else tuple(fit_names)
     grid = make_grid(sim, use_eeg=use_eeg, max_dt=max_dt)
-    build = _build_model(grid, sim)
+    build = _build_model(grid, sim, fit_names)
 
     if init is None:
         # Deliberately wrong by roughly a factor of two in each direction,
@@ -383,23 +480,26 @@ def fit_simulation(
             "tau": 0.6 * sim["truth"]["tau"],
             "tau_z": 1.7 * sim["truth"]["tau_z"],
             "q_z": 0.5 * sim["truth"]["q_z"],
+            "beta": 0.5 * sim["truth"].get("beta", 1.0),
         }
-    init_vec = jnp.array([init[n] for n in _FIT_NAMES])
+    init = {n: init[n] for n in fit_names}
+    init_vec = jnp.array([init[n] for n in fit_names])
 
     fit = fit_statespace(
         build, grid, init=init_vec, max_steps=max_steps,
         restarts=restarts, seed=seed,
     )
     unc = parameter_uncertainty(build, grid, fit["log_theta"])
-    est = {n: float(v) for n, v in zip(_FIT_NAMES, fit["theta"])}
-    truth = {n: float(sim["truth"][n]) for n in _FIT_NAMES}
+    est = {n: float(v) for n, v in zip(fit_names, fit["theta"])}
+    truth = {n: float(sim["truth"][n]) for n in fit_names}
 
     return {
+        "fit_names": fit_names,
         "estimate": est,
         "truth": truth,
         "initial": dict(init),
         "relative_error": {
-            n: abs(est[n] - truth[n]) / truth[n] for n in _FIT_NAMES
+            n: abs(est[n] - truth[n]) / truth[n] for n in fit_names
         },
         "log_likelihood": float(fit["log_likelihood"]),
         "n_obs": float(fit["n_obs"]),
@@ -416,7 +516,7 @@ def fit_simulation(
         "curvature_ratio": float(unc["curvature_ratio"]),
         "condition_number": float(unc["condition_number"]),
         "standard_error": {
-            n: float(v) for n, v in zip(_FIT_NAMES, unc["standard_error"])
+            n: float(v) for n, v in zip(fit_names, unc["standard_error"])
         },
     }
 
@@ -466,7 +566,7 @@ def compare_modalities(sim: dict, **kwargs) -> dict:
     both = fit_simulation(sim, use_eeg=True, **kwargs)
     ratio = {
         n: bold_only["relative_error"][n] / max(both["relative_error"][n], 1e-12)
-        for n in _FIT_NAMES
+        for n in bold_only["fit_names"]
     }
     return {
         "bold_only": bold_only,
@@ -491,7 +591,7 @@ def format_comparison(comparison: dict) -> str:
         f" {'err ratio':>10}"
     ]
     b, j = comparison["bold_only"], comparison["both"]
-    for n in _FIT_NAMES:
+    for n in b["fit_names"]:
         lines.append(
             f"{n:<10} {b['truth'][n]:>10.4g} {b['estimate'][n]:>12.4g}"
             f" {j['estimate'][n]:>12.4g} {comparison['error_ratio'][n]:>10.2f}"
@@ -518,7 +618,7 @@ def format_comparison(comparison: dict) -> str:
         ses = " ".join(
             f"{n}={r['standard_error'][n]:.3f}"
             if np.isfinite(r["standard_error"][n]) else f"{n}=inf"
-            for n in _FIT_NAMES
+            for n in r["fit_names"]
         )
         lines.append(
             f"  {label:<10} identifiable={str(r['identifiable']):<5} "

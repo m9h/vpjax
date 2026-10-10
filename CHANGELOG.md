@@ -9,10 +9,41 @@ All notable changes to vpjax are documented in this file.
 - Pin JAX >= 0.9.2; remove separate jaxlib dependency (bundled in jax 0.9+).
 
 ### Fixed
+- `residual_diagnostics`: the lag-1 innovation autocorrelation used raw
+  rather than mean-removed products, so a channel with an offset could
+  report a value above 1. Now a proper autocorrelation.
 - JAX CUDA dependency for aarch64 DGX Spark: require jax >= 0.5 for GPU.
 - JAX CUDA dependency: platform marker and remove version cap.
 
 ### Added
+
+- `vpjax/validation/eeg_artifacts.py`: in-scanner EEG cleaning as a
+  transparent baseline — gradient average-artifact subtraction locked to
+  the volume trigger (Allen et al. 2000), R-peak detection and
+  ballistocardiogram AAS (Allen et al. 1998), anti-aliased downsampling,
+  and binned Hilbert band envelopes. Refuses recordings whose trigger
+  spacing jitters, since AAS without a scanner-locked clock smears the
+  template. `clean_rest_run` returns the envelope and the volume-trigger
+  times on one clock so BOLD volumes are stamped without an offset guess.
+- `vpjax/validation/eeg_fmri_statespace.py`: fits the drive-plus-Balloon
+  model to a recorded run with the observation noise variances and the
+  EEG loading (sign chosen by likelihood) estimated rather than supplied,
+  reporting innovation whiteness and identifiability for a BOLD-only and
+  a BOLD+EEG arm. The EEG channel gets its own fast OU nuisance state by
+  default: on ds003768 a single shared state is rejected by whiteness
+  (BOLD innovation lag-1 0.89), the six-state model is calibrated on
+  both channels. `scripts/validate_ds003768_statespace.py` runs it on an
+  OpenNeuro ds003768 rest run.
+- `statespace_recovery`: a shape-only `drug_shaped_input` (unit-peak
+  two-exponential; every time scale supplied by the caller), a `beta`
+  gain on the drive input estimated alongside the other parameters, and
+  `fit_names` on `fit_simulation` to hold any subset at truth — the
+  "known from a separate session" counterfactual. Exogenous inputs reach
+  the filter through `ll_filter(inputs=...)`, sampled on the grid.
+- `scripts/simultaneity_case.py`: multi-seed version of the question
+  "does identifiability need simultaneous EEG?": an envelope-SNR sweep,
+  the fixed-drive-statistics counterfactual, and the identifiability of a
+  drug-contrast gain with and without the fast channel.
 - `pharmacokinetics/` subpackage: PK/PD layer above the existing
   hemodynamic and neural models.
   - Linear mamillary compartment models (1-3 compartments, optional

@@ -771,3 +771,24 @@ class TestNonlinear:
 
         assert float(run(jnp.ones(11))) == pytest.approx(1.0, abs=1e-5)
         assert float(run(jnp.full((11,), 2.0))) == pytest.approx(2.0, abs=1e-5)
+
+
+class TestLagOneWithOffset:
+    """Lag-1 must be an autocorrelation even when the innovations have a mean."""
+
+    def test_offset_does_not_inflate_lag1(self):
+        import numpy as np
+        from types import SimpleNamespace
+        from vpjax.statespace.estimation import residual_diagnostics
+
+        rng = np.random.default_rng(0)
+        n = 2000
+        x = np.zeros(n)
+        for k in range(1, n):
+            x[k] = 0.6 * x[k - 1] + rng.normal()
+        x = x / x.std() + 3.0          # AR(1) with rho=0.6, offset 3 SD
+        result = SimpleNamespace(residual=jnp.asarray(x)[:, None])
+        d = residual_diagnostics(result, channels=("a",))
+        lag1 = float(d["per_channel"]["a"]["lag1"])
+        assert abs(lag1 - 0.6) < 3.0 / np.sqrt(n) + 0.02
+        assert lag1 <= 1.0

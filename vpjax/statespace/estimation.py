@@ -234,10 +234,13 @@ def residual_diagnostics(
         var = jnp.sum(w * r**2) / n - mean**2
 
         # Pair each present sample with the next present sample of this
-        # channel, carrying the last seen value across absent rows.
+        # channel, carrying the last seen value across absent rows.  The
+        # products are of mean-removed residuals, so a channel with an
+        # offset reports its autocorrelation rather than offset²/var.
         def body(carry, inputs):
             last, has_last = carry
             r_i, w_i = inputs
+            r_i = r_i - mean
             paired = w_i * has_last
             contrib = paired * last * r_i
             last = jnp.where(w_i > 0, r_i, last)
