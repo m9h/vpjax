@@ -34,6 +34,20 @@ vpjax fills these gaps with models from Riera (neurovascular coupling), Bulte (q
 
 ```
 vpjax/
+├── pharmacokinetics/   # Dose → plasma → effect site → receptor occupancy
+│   ├── dosing.py       # Dose events; static times, differentiable amounts
+│   ├── compartments.py # 1-3 compartment models, closed form (matrix exp)
+│   ├── occupancy.py    # Effect-site lag, Hill/Emax, regional weighting
+│   ├── error.py        # Combined additive + proportional residual error
+│   ├── inversion.py    # Per-subject fit (Optimistix Levenberg-Marquardt)
+│   └── nlme.py         # Population model (NumPyro, optional)
+│
+├── statespace/         # Latent state from multirate, asynchronous sensors
+│   ├── propagators.py  # LL mean step; Van Loan process noise
+│   ├── filters.py      # LL filter + RTS smoother, masked observations
+│   ├── multirate.py    # Asynchronous streams → union grid + masks
+│   └── estimation.py   # Innovation likelihood, identifiability, diagnostics
+│
 ├── hemodynamics/       # Balloon-Windkessel → extended Riera model
 │   ├── balloon.py      # Standard B-W (from vbjax, reference)
 │   ├── riera.py        # Full neurovascular coupling (Riera 2006/2007)
@@ -175,6 +189,121 @@ With VASO: zero free hemodynamic parameters — all observables measured.
 | Neurotransmitters | (constraint) | MRS GABA/Glu |
 | Myelination | (constraint) | QMT BPF |
 | Conduction velocity | (constraint, from sbi4dwi) | AxCaliber |
+
+## Drug Studies: the PK/PD Layer
+
+For a pharmacological experiment the measured signal change is not the
+quantity of interest — it is the convolution of a concentration time
+course with a neural effect and a vascular effect, and those two are not
+separable from BOLD alone. The `pharmacokinetics/` subpackage supplies
+the top of that chain so the rest can be identified:
+
+| Layer | Module | What it contributes |
+|---|---|---|
+| Dose → plasma | `pharmacokinetics/compartments.py` | Exact concentration time course, closed form |
+| Plasma → effect site | `pharmacokinetics/occupancy.py` | The lag that resolves concentration–effect hysteresis |
+| Occupancy → regional drive | `pharmacokinetics/occupancy.py` | Receptor density turns a scalar into a spatial pattern |
+| Drive → neural activity | (vbjax neural mass) | Modulated excitability |
+| Drive → vascular tone | `hemodynamics/riera.py` | Direct vasoactive effect, independent of neural |
+| States → signals | `hemodynamics/bold.py`, `perfusion/` | BOLD, ASL, VASO observation models |
+
+One drive entering both the neural and the vascular model is the point:
+fitting EEG and BOLD jointly against a shared concentration curve is
+what distinguishes a neural effect from a vasoactive one. Fitting them
+separately cannot.
+
+Conventions follow NONMEM and Pumas — clearance-and-volume
+parameterisation, log-normal between-subject variability, combined
+residual error, closed-form linear disposition — so that any fit can be
+cross-checked against an established estimator. That check is worth
+doing: a PK model with a mis-scaled volume still produces a plausible
+curve, and agreement with an independent implementation is the cheapest
+way to find out whether the model is the one intended.
+
+```python
+import jax
+jax.config.update("jax_enable_x64", True)   # concentrations span orders of magnitude
+
+from vpjax.pharmacokinetics import (
+    TWO_COMPARTMENT, PKParams, infusion, concentration,
+    effect_site_concentration, occupancy, EffectSiteParams,
+)
+
+params = PKParams(CL=..., V1=..., Q2=..., V2=...)   # from published PK
+regimen = infusion(amount=..., duration=...)
+cp = concentration(params, regimen, t, TWO_COMPARTMENT)
+ce = effect_site_concentration(cp, dt=dt, params=EffectSiteParams(ke0=...))
+occ = occupancy(ce, ec50=..., gamma=...)
+```
+
+`examples/pkpd_drive.py` runs the whole chain from a JSON of explicit
+assumptions and records them in the output, so a downstream fit cannot
+be mistaken for an independent measurement of the PK.
+
+## Fusing EEG and fMRI: the State-Space Layer
+
+EEG and fMRI observe the same latent state at rates three orders of
+magnitude apart. Fitting them separately and comparing the results
+discards the constraint that makes a neurovascular model identifiable;
+upsampling the slow modality to the fast grid invents data. The
+`statespace/` subpackage estimates the shared latent state directly, from
+whichever channels are present at each instant.
+
+```python
+from vpjax.statespace import build_observation_grid, fit_statespace, parameter_uncertainty
+
+grid = build_observation_grid(
+    {
+        "eeg_delta": {"time_s": t_eeg,  "values": delta_power, "noise_sd": eeg_sd},
+        "bold":      {"time_s": t_bold, "values": bold_rois,   "noise_sd": bold_sd},
+    },
+    max_dt=0.25,          # keep the linearization fresh between volumes
+)
+
+fit = fit_statespace(build, grid, init=theta0, restarts=12)
+unc = parameter_uncertainty(build, grid, fit["log_theta"])
+```
+
+Three things this module insists on, each because the obvious
+alternative fails quietly:
+
+- **Nothing is interpolated.** Each channel carries a presence mask and
+  an absent channel contributes nothing. Observations are assimilated as
+  sequential scalar updates, which for diagonal `R` is identical to the
+  joint update but makes masking and the per-channel likelihood
+  decompose exactly.
+- **Multi-start is not optional.** In the Balloon model `kappa` and
+  `tau` both set the width of the impulse response, so the likelihood
+  has a ridge. A single gradient-based fit started off the ridge slides
+  along it and reports convergence several hundred log-likelihood units
+  below the truth.
+- **Whiteness is necessary, not sufficient.** `residual_diagnostics`
+  tells you whether the model described the data. It does not tell you
+  whether the parameters that did so are the right ones — a flat
+  direction lets badly wrong parameters whiten the residuals perfectly.
+  `parameter_uncertainty` is the check that catches it, from the
+  curvature of the likelihood, and it needs no ground truth.
+
+### What simultaneous EEG actually buys
+
+`scripts/validate_statespace_recovery.py` fits the same simulated run
+twice. At resting-state amplitude over 300 s (TR 2 s, 10 Hz EEG envelope
+at SNR 3):
+
+| | κ | τ | τ_z | q_z | verdict |
+|---|---|---|---|---|---|
+| BOLD only, relative SE | 0.27 | 0.22 | 17.3 | 34.6 | not identifiable |
+| BOLD + EEG, relative SE | 0.03 | 0.03 | 0.13 | 0.06 | identifiable |
+
+The BOLD-only arm's innovations are white (variance 0.97) and its
+parameters are wrong by three orders of magnitude on `q_z`: from 151
+volumes, a fast large-amplitude drive through a slow balloon is
+indistinguishable from a slow small drive through a fast one. So the
+fast channel is not buying precision here, it is buying identifiability.
+
+That figure describes the estimator under this model, not any recording.
+A model misspecified in a way EEG cannot see would show the same benefit
+here and none in practice, so treat it as an upper bound.
 
 ## Dependencies
 

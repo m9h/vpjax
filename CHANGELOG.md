@@ -13,6 +13,69 @@ All notable changes to vpjax are documented in this file.
 - JAX CUDA dependency: platform marker and remove version cap.
 
 ### Added
+- `pharmacokinetics/` subpackage: PK/PD layer above the existing
+  hemodynamic and neural models.
+  - Linear mamillary compartment models (1-3 compartments, optional
+    first-order absorption depot) solved in closed form via the matrix
+    exponential of the augmented generator, so the solution is exact
+    and carries no solver tolerance into the parameter estimates.
+  - Saturable (Michaelis-Menten) elimination integrated with Diffrax
+    `Kvaerno5` for the nonlinear case.
+  - Dose events as known-time discontinuities: `lax.scan` over
+    inter-dose intervals with boluses applied at the boundaries, rather
+    than Diffrax's state-triggered event system. Dose times are static,
+    dose amounts stay differentiable.
+  - Effect-site compartment, Hill/Emax occupancy, and regional
+    weighting by receptor density -- the join to vbjax neural masses
+    and the vpjax vascular models.
+  - Combined additive-plus-proportional residual error model.
+  - Single-subject estimation by Optimistix Levenberg-Marquardt on log
+    parameters; population (NLME) model in NumPyro with non-centred
+    random effects and an LKJ prior on their correlation.
+  - Parameterisation, error model and closed-form solutions follow the
+    NONMEM/Pumas conventions so that fits can be cross-checked against
+    an established estimator.
+- `statespace/` subpackage: continuous-discrete state-space estimation
+  for multimodal recordings, where one latent physiological state is
+  observed by several sensors at different rates.
+  - Local-linearization filter and RTS smoother. Mean by the LL step
+    from an augmented matrix exponential (exact as the Jacobian
+    approaches singularity, unlike the ridge in
+    `integrators/local_linearization.py`); process noise by Van Loan's
+    identity rather than quadrature.
+  - Observations assimilated as sequential scalar updates. Identical to
+    the joint update for diagonal R, but masking and the
+    per-observation log-likelihood then decompose exactly, so an absent
+    channel costs nothing and needs no special case.
+  - `multirate.build_observation_grid` merges asynchronous streams onto
+    a union-of-timestamps grid with per-channel presence masks. Nothing
+    is interpolated; `max_dt` subdivides long intervals to keep the
+    linearization fresh between volumes.
+  - `estimation.fit_statespace` maximises the innovation likelihood
+    through the filter recursion by autodiff, with multi-start (the
+    kappa-tau ridge in the Balloon model traps a single start) and
+    best-so-far solver wrapping.
+  - `estimation.parameter_uncertainty` gives relative standard errors
+    and an identifiability verdict from the observed Fisher
+    information. This catches what innovation whiteness cannot: a model
+    that whitens its residuals with badly wrong parameters because two
+    of them trade off.
+  - `estimation.residual_diagnostics` reports whiteness per channel,
+    with lag-1 computed over consecutive *present* samples of each
+    channel rather than adjacent grid rows.
+- `validation/statespace_recovery.py` and
+  `scripts/validate_statespace_recovery.py`: recovery of known
+  parameters from a simulated EEG-fMRI run, and a BOLD-only vs
+  BOLD+EEG contrast. At resting-state amplitude over 300 s, all four
+  parameters recover to within 7% from both modalities, while from 151
+  BOLD volumes alone the model is not identifiable (relative standard
+  errors of 17 and 35 on the drive parameters) despite its innovations
+  being white. The measured amplitude limit of the first-order filter
+  is tabulated in the module docstring.
+- `slow` pytest marker for the state-space fitting tests.
+- `nlme` optional dependency group (numpyro, optax).
+- `examples/pkpd_drive.py`: simulates dose to regional drive from an
+  explicit JSON of PK/PD assumptions and records them in the output.
 - GPU optional dependency for JAX CUDA.
 
 ## [0.1.0] -- 2025

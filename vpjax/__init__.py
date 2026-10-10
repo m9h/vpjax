@@ -61,6 +61,8 @@ from vpjax import cardiac
 from vpjax import sleep
 from vpjax import brainstem
 from vpjax import stochastic
+from vpjax import pharmacokinetics
+from vpjax import statespace
 
 __all__ = [
     # Types

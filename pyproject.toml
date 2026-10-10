@@ -25,6 +25,11 @@ full = [
     "lineax>=0.0.4",
     "optimistix>=0.0.6",
 ]
+# Population (nonlinear mixed-effects) PK models.
+nlme = [
+    "numpyro>=0.15",
+    "optax>=0.1.9",
+]
 angiography = [
     "scikit-image>=0.20",
     "scipy>=1.10",
@@ -41,6 +46,10 @@ gpu = [
 dev = [
     "pytest>=7.0",
     "pytest-xdist",
+    "lineax>=0.0.4",
+    "optimistix>=0.0.6",
+    "numpyro>=0.15",
+    "optax>=0.1.9",
     "scikit-image>=0.20",
     "scipy>=1.10",
     "mne>=1.6",
@@ -56,6 +65,9 @@ doc = [
 
 [tool.pytest.ini_options]
 testpaths = ["vpjax/tests"]
+markers = [
+    "slow: tests that fit a state-space model and take minutes; deselect with -m 'not slow'",
+]
 
 [tool.uv]
 environments = [
