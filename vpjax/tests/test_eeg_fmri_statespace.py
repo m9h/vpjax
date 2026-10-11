@@ -232,3 +232,16 @@ class TestPriors:
                     priors={"tau": (float(np.log(5.0)), 0.05)})
         assert abs(np.log(r["estimate"]["tau"]) - np.log(5.0)) < 0.2
         assert r["priors"] == {"tau": [float(np.log(5.0)), 0.05]}
+
+
+class TestInputDrop:
+    def test_collapsed_input_gain_drops_the_input(self, run):
+        sim, _ = run
+        t_u = np.arange(0.0, 120.0, 1.0)
+        init = default_init(sim["bold"], (), True, ("resp",))
+        init["beta_resp"] = 1e-9
+        r = fit_run(sim["t_bold"], sim["bold"], inputs={"resp": (t_u, np.sin(t_u / 5))},
+                    init=init, sign=1.0, restarts=0, max_steps=1)
+        assert list(r["inputs_dropped"]) == ["resp"]
+        assert r["inputs"] == ()
+        assert not any(n.startswith(("beta_", "tau_in_")) for n in r["fit_names"])

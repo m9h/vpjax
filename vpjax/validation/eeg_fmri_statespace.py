@@ -490,14 +490,26 @@ def fit_run(
                 best = cand
     signs, build, fit = best
 
-    collapsed = {}
+    collapsed, dropped = {}, {}
     if noise_floor is not None:
         est = dict(zip(names, (float(v) for v in fit["theta"])))
         collapsed = {c: est[f"r_{c}"] for c in channels
                      if f"r_{c}" in est and est[f"r_{c}"] < noise_floor}
-    if collapsed:
+        # An input whose gain runs to zero is an input the data do not
+        # want; log beta at minus infinity is the same flat direction as
+        # a collapsed noise variance, so the input is dropped and the fit
+        # repeated without it.  The threshold is relative to the drive's
+        # stationary SD, since beta is in drive units per SD of input.
+        drive_sd = float(np.sqrt(est["q_z"] * est["tau_z"] / 2.0)) if "q_z" in est else 1.0
+        dropped = {u: est[f"beta_{u}"] for u in in_names
+                   if f"beta_{u}" in est and est[f"beta_{u}"] < noise_floor * drive_sd}
+    if collapsed or dropped:
         fixed = dict(fixed, **{f"r_{c}": noise_floor for c in collapsed})
-        names = tuple(n for n in names if n not in fixed)
+        inputs = {u: v for u, v in inputs.items() if u not in dropped}
+        in_names = tuple(inputs)
+        signs = {k: v for k, v in signs.items() if k not in dropped}
+        names = tuple(n for n in names if n not in fixed
+                      and not any(n in (f"beta_{u}", f"tau_in_{u}") for u in dropped))
         init_vec = jnp.array([init[n] for n in names])
         log_prior = make_log_prior(names, priors)
         build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance, inputs=inputs)
@@ -510,6 +522,7 @@ def fit_run(
     return {
         "fit_names": names,
         "noise_floored": sorted(collapsed),
+        "inputs_dropped": dropped,
         "priors": {k: list(v) for k, v in priors.items()},
         "collapsed_noise": collapsed,
         "channels": grid.channels,
@@ -547,6 +560,9 @@ def format_run(label: str, r: dict) -> str:
     if r.get("noise_floored"):
         lines.append("  noise floored for " + ", ".join(
             f"{c} (collapsed to {v:.1e})" for c, v in r["collapsed_noise"].items()))
+    if r.get("inputs_dropped"):
+        lines.append("  inputs dropped (gain collapsed): " + ", ".join(
+            f"{u} (beta {v:.1e})" for u, v in r["inputs_dropped"].items()))
     if len(r["log_likelihood_by_sign"]) > 1:
         lines.append("  by sign: " + ", ".join(
             f"{k}: {v:.1f}" for k, v in r["log_likelihood_by_sign"].items()))
