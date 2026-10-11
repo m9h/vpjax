@@ -34,11 +34,12 @@ def main():
     p.add_argument("--restarts", type=int, default=4)
     p.add_argument("--max-steps", type=int, default=300)
     p.add_argument("--max-dt", type=float, default=0.25)
+    p.add_argument("--eeg-dt", type=float, default=0.5, help="envelope sample interval to fit at")
     p.add_argument("--output")
     a = p.parse_args()
 
     paths = run_paths(a.root, a.subject, a.task)
-    run = load_run(paths)
+    run = load_run(paths, eeg_dt=a.eeg_dt)
     tr, t_vol = run["tr"], run["t_volumes"]
     if a.roi_file:
         d = np.load(a.roi_file)

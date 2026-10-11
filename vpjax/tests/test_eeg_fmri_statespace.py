@@ -126,3 +126,19 @@ class TestFit:
         assert r["sign"]["eeg"] == 1.0
         assert r["log_likelihood_by_sign"]["eeg:+1"] > r["log_likelihood_by_sign"]["eeg:-1"] + 10
         assert abs(r["diagnostics"]["per_channel"]["eeg"]["variance"] - 1.0) < 0.3
+
+
+class TestRebin:
+    def test_averages_into_coarser_bins(self):
+        from vpjax.validation.eeg_fmri_statespace import rebin
+        t = np.arange(0, 10, 0.1) + 0.05
+        v = np.arange(t.size, dtype=float)
+        t2, v2 = rebin(t, v, 0.5)
+        assert t2.size == 20 and np.isclose(t2[0], 0.25)
+        assert np.isclose(v2[0], np.mean(v[:5]))
+
+    def test_no_op_when_already_coarse(self):
+        from vpjax.validation.eeg_fmri_statespace import rebin
+        t = np.arange(0, 10, 0.5)
+        t2, v2 = rebin(t, t, 0.5)
+        assert t2.size == t.size

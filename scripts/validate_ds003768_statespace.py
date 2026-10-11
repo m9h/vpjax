@@ -21,6 +21,7 @@ from vpjax.validation.eeg_fmri_statespace import (
     bold_fractional,
     fit_run,
     format_run,
+    rebin,
     standardise_envelope,
 )
 from vpjax.validation.sleep_eeg_fmri import load_bold_global
@@ -38,6 +39,8 @@ def main():
     p.add_argument("--roi", default="global",
                    help="which BOLD series to use from --roi-file (global, visual, motor)")
     p.add_argument("--drop", type=int, default=0, help="initial volumes to drop")
+    p.add_argument("--eeg-dt", type=float, default=0.5,
+                   help="envelope sample interval to fit at (the cache is at 0.1 s)")
     p.add_argument("--restarts", type=int, default=8)
     p.add_argument("--max-dt", type=float, default=0.25)
     p.add_argument("--max-steps", type=int, default=300)
@@ -72,6 +75,7 @@ def main():
         raise ValueError(f"{t_vol.size} volume triggers but {ts.size} volumes")
     # Stamp each volume at its temporal centre on the EEG clock.
     t_bold = t_vol[a.drop:] + tr / 2.0
+    t_env_all, env_all = rebin(t_env_all, env_all, a.eeg_dt)
     t_env, env = standardise_envelope(env_all, t_env_all, t_bold[0] - tr / 2, t_bold[-1] + tr / 2)
 
     print(f"{stem} [{a.roi}]: {bold.size} volumes at TR {tr} s, BOLD fractional SD {bold.std():.4f}; "

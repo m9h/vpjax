@@ -128,6 +128,25 @@ def standardise_envelope(
     return t_env[keep], x
 
 
+def rebin(t: np.ndarray, v: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
+    """Average a regularly sampled series into bins of width *dt*.
+
+    Used to take a 10 Hz envelope down to 2 Hz before fitting.  At 10 Hz
+    the envelope's own fast structure (0.1–0.3 s) makes the EEG
+    observation-noise variance redundant with the nuisance state and
+    the fit runs it to zero; at 2 Hz that structure is sub-sample and
+    enters as white noise, where it belongs, while the slow drive (2–5 s)
+    is still sampled four times per time constant.
+    """
+    t, v = np.asarray(t, dtype=float), np.asarray(v, dtype=float)
+    step = float(np.median(np.diff(t)))
+    k = int(round(dt / step))
+    if k <= 1:
+        return t, v
+    n = v.size // k
+    return (t[: n * k].reshape(n, k).mean(axis=1), v[: n * k].reshape(n, k).mean(axis=1))
+
+
 def run_grid(
     t_bold: np.ndarray,
     bold: np.ndarray,
