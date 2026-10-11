@@ -30,7 +30,9 @@ def main():
     p.add_argument("--roi-file", help="npz from scripts/ds003768_rois.py (--bold/--t1 form)")
     p.add_argument("--roi", default="global")
     p.add_argument("--arms", nargs="+", default=["bold", "eeg", "pupil", "eeg+pupil"],
-                   help="each arm is 'bold' or a '+'-joined set of eeg, pupil, respiration")
+                   help="each arm is 'bold' or a '+'-joined set of eeg, pupil, respiration; "
+                        "a '~' prefix makes a stream a vascular input instead of an "
+                        "observation, e.g. 'eeg+~respiration'")
     p.add_argument("--restarts", type=int, default=4)
     p.add_argument("--max-steps", type=int, default=300)
     p.add_argument("--max-dt", type=float, default=0.25)
@@ -75,12 +77,15 @@ def main():
     kw = dict(restarts=a.restarts, max_steps=a.max_steps, max_dt=a.max_dt)
     results = {}
     for arm in a.arms:
-        chans = [] if arm == "bold" else arm.split("+")
-        missing = [c for c in chans if c not in streams]
+        tokens = [] if arm == "bold" else arm.split("+")
+        chans = [c for c in tokens if not c.startswith("~")]
+        ins = [c[1:] for c in tokens if c.startswith("~")]
+        missing = [c for c in chans + ins if c not in streams]
         if missing:
             print(f"skip {arm}: no {missing}"); continue
         aux = {c: streams[c] for c in chans}
-        r = fit_run(t_bold, bold, aux=aux or None, **kw)
+        inputs = {c: streams[c] for c in ins}
+        r = fit_run(t_bold, bold, aux=aux or None, inputs=inputs or None, **kw)
         results[arm] = r
         print(format_run(arm, r), flush=True)
 

@@ -142,3 +142,45 @@ class TestRebin:
         t = np.arange(0, 10, 0.5)
         t2, v2 = rebin(t, t, 0.5)
         assert t2.size == t.size
+
+
+class TestVascularInput:
+    def test_names_and_state_dimension(self, run):
+        from vpjax.validation.eeg_fmri_statespace import param_names, sample_inputs
+        sim, env = run
+        names = param_names(("eeg",), True, ("resp",))
+        assert names[-3:] == ("beta_resp", "tau_in_resp", "r_bold")
+        grid = run_grid(sim["t_bold"], sim["bold"], {"eeg": (sim["t_eeg"], env)})
+        t_u = np.arange(0.0, 120.0, 1.0)
+        u = np.sin(2 * np.pi * t_u / 30.0)
+        in_names, ug = sample_inputs(grid, {"resp": (t_u, u)})
+        assert in_names == ("resp",) and ug.shape == (np.asarray(grid.t).size, 1)
+        assert abs(ug.mean()) < 0.1 and abs(ug.std() - 1.0) < 0.1
+        init = default_init(sim["bold"], ("eeg",), True, ("resp",))
+        build = run_model(grid, names, {}, inputs={"resp": (t_u, u)})
+        spec = build(np.array([init[n] for n in names]))
+        assert spec["Q"].shape == (7, 7) and spec["inputs"].shape == ug.shape
+
+    def test_input_moves_the_flow_signal(self, run):
+        import jax.numpy as jnp
+        from vpjax.validation.eeg_fmri_statespace import param_names
+        sim, _ = run
+        grid = run_grid(sim["t_bold"], sim["bold"])
+        names = param_names((), True, ("resp",))
+        t_u = np.arange(0.0, 120.0, 1.0)
+        build = run_model(grid, names, {}, inputs={"resp": (t_u, np.sin(t_u))})
+        init = default_init(sim["bold"], (), True, ("resp",))
+        spec = build(np.array([init[n] for n in names]))
+        x = jnp.concatenate([jnp.array([0.0, 0.0, 1.0, 1.0, 1.0]), jnp.array([1.0])])  # r = 1
+        dx = spec["f"](0.0, x, (None, jnp.array([0.0])))
+        assert float(dx[1]) == pytest.approx(init["beta_resp"], rel=1e-5)
+        assert float(dx[5]) == pytest.approx(-1.0 / init["tau_in_resp"], rel=1e-5)
+
+    def test_fit_run_accepts_inputs(self, run):
+        sim, _ = run
+        t_u = np.arange(0.0, 120.0, 1.0)
+        r = fit_run(sim["t_bold"], sim["bold"], inputs={"resp": (t_u, np.sin(t_u / 5))},
+                    restarts=0, max_steps=3)
+        assert r["inputs"] == ("resp",)
+        assert "beta_resp" in r["estimate"] and r["sign"]["resp"] in (-1.0, 1.0)
+        assert set(r["log_likelihood_by_sign"]) == {"resp:+1", "resp:-1"}

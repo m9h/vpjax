@@ -26,8 +26,19 @@ knows the truth; here nothing is known, so three things change:
   model can describe the run, identifiability says whether the
   parameters it did so with mean anything.
 
-State layout is ``[z, s, f, v, q, n_1, ..., n_k]`` for *k* auxiliary
-channels with nuisance states.  Channels may be sparse -- a pupil trace
+State layout is ``[z, s, f, v, q, n_1, ..., n_k, r_1, ..., r_m]`` for
+*k* auxiliary channels with nuisance states and *m* vascular inputs.
+
+A **vascular input** is a measured series that acts on the vasculature
+rather than reporting on the neural drive: breathing depth is the
+canonical one (arterial CO2 → CBF; Birn et al. 2006, 2008).  It enters
+the flow-inducing signal through a first-order lag,
+``dr/dt = (u - r) / tau_in`` and ``ds/dt += beta * r``, so the fitted
+``tau_in`` plays the role of the respiration response function's
+latency and ``beta`` its gain.  This is the mechanism by which a
+non-neural drive can masquerade as a neural one in BOLD, which is the
+HCP-A objection to drug studies in a nutshell; modelling it with a
+measured input is how the two are separated.  Channels may be sparse -- a pupil trace
 that is valid a quarter of the time is a legitimate observation of the
 drive a quarter of the time, and the presence mask handles it without
 interpolation.
@@ -63,14 +74,18 @@ CORE_NAMES = ("kappa", "tau", "tau_z", "q_z")
 N_CORE = 5   # drive + four Balloon states
 
 
-def param_names(channels: tuple[str, ...] = (), nuisance: bool = True) -> tuple[str, ...]:
-    """Free-parameter names for a model with these auxiliary *channels*."""
+def param_names(
+    channels: tuple[str, ...] = (), nuisance: bool = True, inputs: tuple[str, ...] = ()
+) -> tuple[str, ...]:
+    """Free-parameter names for a model with these auxiliary *channels* and *inputs*."""
     names = list(CORE_NAMES)
     for c in channels:
         names.append(f"gain_{c}")
         if nuisance:
             names += [f"tau_n_{c}", f"q_n_{c}"]
         names.append(f"r_{c}")
+    for u in inputs:
+        names += [f"beta_{u}", f"tau_in_{u}"]
     names.append("r_bold")
     return tuple(names)
 
@@ -170,35 +185,65 @@ def run_grid(
 # Model
 # ---------------------------------------------------------------------------
 
+def sample_inputs(
+    grid: ObservationGrid, inputs: dict[str, tuple[np.ndarray, np.ndarray]]
+) -> tuple[tuple[str, ...], np.ndarray]:
+    """Standardised input series sampled onto the grid, shape ``(K, m)``.
+
+    Inputs are measured, smooth and slow (a breathing envelope at 1 Hz
+    driving a lag of several seconds), so sampling them onto the grid
+    is not the interpolation of data the observation side refuses; and
+    they are standardised so ``beta`` is in drive units per SD.  Outside
+    the recorded span the input is held at its edge value.
+    """
+    names = tuple(inputs)
+    t = np.asarray(grid.t)
+    cols = []
+    for name in names:
+        ti, ui = (np.asarray(a, dtype=float) for a in inputs[name])
+        ok = np.isfinite(ui)
+        ui = (ui[ok] - ui[ok].mean()) / ui[ok].std()
+        cols.append(np.interp(t, ti[ok], ui))
+    return names, np.stack(cols, axis=1) if cols else np.zeros((t.size, 0))
+
+
 def run_model(
     grid: ObservationGrid,
     fit_names: tuple[str, ...],
     fixed: dict[str, float],
     sign: float | dict[str, float] = 1.0,
     nuisance: bool = True,
+    inputs: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
     balloon: BalloonParams | None = None,
     jitter: float = 1e-8,
 ):
     """``build(theta)`` for a recorded run.
 
     *fit_names* are free (log scale); *fixed* supplies the rest.  *sign*
-    is the loading sign per auxiliary channel (a scalar applies to all).
-    ``gamma``, ``alpha`` and ``E0`` come from *balloon* and are never
-    free, for the reason given in
+    is the loading sign per auxiliary channel and per vascular input (a
+    scalar applies to all).  *inputs* maps a name to ``(time_s, values)``
+    of a measured vascular input.  ``gamma``, ``alpha`` and ``E0`` come
+    from *balloon* and are never free, for the reason given in
     :mod:`vpjax.validation.statespace_recovery`.
     """
     bp = BalloonParams() if balloon is None else balloon
     channels = tuple(c for c in grid.channels if c != "bold")
     nuisance = nuisance and bool(channels)
-    needed = param_names(channels, nuisance)
+    in_names, u_grid = sample_inputs(grid, inputs or {})
+    needed = param_names(channels, nuisance, in_names)
     missing = [n for n in needed if n not in fit_names and n not in fixed]
     if missing:
         raise ValueError(f"neither free nor fixed: {missing}")
-    signs = {c: float(sign) for c in channels} if np.isscalar(sign) else dict(sign)
+    signs = (
+        {c: float(sign) for c in channels + in_names} if np.isscalar(sign) else dict(sign)
+    )
     free = {n: i for i, n in enumerate(fit_names)}
     cols = {name: i for i, name in enumerate(grid.channels)}
-    d = N_CORE + (len(channels) if nuisance else 0)
+    n_nuis = len(channels) if nuisance else 0
+    d = N_CORE + n_nuis + len(in_names)
     nidx = {c: N_CORE + i for i, c in enumerate(channels)}
+    ridx = {u: N_CORE + n_nuis + j for j, u in enumerate(in_names)}
+    u_jnp = jnp.asarray(u_grid)
     full_h = augmented_observation()
 
     def build(theta):
@@ -211,13 +256,24 @@ def run_model(
         for c in channels:
             r = r.at[cols[c]].set(get(f"r_{c}"))
         core = augmented_drift(kappa, tau, tau_z, bp.gamma, bp.alpha, bp.E0)
+        betas = {u: signs[u] * get(f"beta_{u}") for u in in_names}
 
         def f(t, x, args):
-            dx = core(t, x[:N_CORE], args)
+            # args is (static, u_k) when inputs are present; the neural
+            # drive gets no exogenous input here, so core sees None.
+            dx = core(t, x[:N_CORE], None)
+            if in_names:
+                u_k = args[1]
+                vascular = sum(betas[u] * x[ridx[u]] for u in in_names)
+                dx = dx.at[1].add(vascular)
+            parts = [dx]
             if nuisance:
-                dn = jnp.stack([-x[nidx[c]] / get(f"tau_n_{c}") for c in channels])
-                dx = jnp.concatenate([dx, dn])
-            return dx
+                parts.append(jnp.stack([-x[nidx[c]] / get(f"tau_n_{c}") for c in channels]))
+            if in_names:
+                parts.append(jnp.stack([
+                    (u_k[j] - x[ridx[u]]) / get(f"tau_in_{u}") for j, u in enumerate(in_names)
+                ]))
+            return jnp.concatenate(parts)
 
         def h(t, x, args):
             both = full_h(t, x[:N_CORE], args)
@@ -239,7 +295,12 @@ def run_model(
                 Qm = Qm.at[nidx[c], nidx[c]].set(q_n)
                 diag.append(q_n * tau_n / 2.0)
             m0 = jnp.concatenate([m0, jnp.zeros(len(channels))])
-        return {
+        if in_names:
+            # Lag states are deterministic given the input; unit prior
+            # variance because the input is standardised.
+            diag += [1.0] * len(in_names)
+            m0 = jnp.concatenate([m0, jnp.zeros(len(in_names))])
+        spec = {
             "f": f,
             "h": h,
             "Q": Qm,
@@ -247,6 +308,9 @@ def run_model(
             "P0": jnp.diag(jnp.array(diag)),
             "r_diag": r,
         }
+        if in_names:
+            spec["inputs"] = u_jnp
+        return spec
 
     return build
 
@@ -255,6 +319,7 @@ def default_init(
     bold: np.ndarray,
     channels: tuple[str, ...] | bool = (),
     nuisance: bool = True,
+    inputs: tuple[str, ...] = (),
     balloon: BalloonParams | None = None,
 ) -> dict:
     """Starting values that are scaled to the run, not to any dataset.
@@ -288,6 +353,11 @@ def default_init(
             init.update({f"tau_n_{c}": tau_n, f"q_n_{c}": 2.0 * 0.4 / tau_n, f"r_{c}": 0.3})
         else:
             init[f"r_{c}"] = 0.5
+    for u in inputs:
+        # A vascular input worth a third of the drive's SD, lagged by the
+        # ~8 s that respiration-response-function fits typically find.
+        init[f"beta_{u}"] = 0.3 * np.sqrt(init["q_z"] * tau_z / 2.0)
+        init[f"tau_in_{u}"] = 8.0
     return init
 
 
@@ -305,6 +375,7 @@ def fit_run(
     t_env: np.ndarray | None = None,
     env: np.ndarray | None = None,
     aux: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
+    inputs: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
     sign: float | dict[str, float] | None = None,
     nuisance: bool = True,
     init: dict | None = None,
@@ -327,18 +398,20 @@ def fit_run(
     ``log_likelihood_by_sign``.
     """
     aux = dict(aux or {})
+    inputs = dict(inputs or {})
     if env is not None:
         aux["eeg"] = (t_env, env)
     channels = tuple(aux)
+    in_names = tuple(inputs)
     nuisance = nuisance and bool(channels)
     grid = run_grid(t_bold, bold, aux, max_dt=max_dt)
     fixed = {} if fixed is None else dict(fixed)
-    names = tuple(n for n in param_names(channels, nuisance) if n not in fixed)
-    init = default_init(bold, channels, nuisance) if init is None else dict(init)
+    names = tuple(n for n in param_names(channels, nuisance, in_names) if n not in fixed)
+    init = default_init(bold, channels, nuisance, in_names) if init is None else dict(init)
     init_vec = jnp.array([init[n] for n in names])
 
     def one(signs):
-        build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance)
+        build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance, inputs=inputs)
         fit = fit_statespace(
             build, grid, init=init_vec, max_steps=max_steps,
             restarts=restarts, seed=seed,
@@ -346,14 +419,15 @@ def fit_run(
         return build, fit
 
     tried = {}
+    signed = channels + in_names
     if sign is None:
-        signs = {c: 1.0 for c in channels}
+        signs = {c: 1.0 for c in signed}
     else:
-        signs = {c: float(sign) for c in channels} if np.isscalar(sign) else dict(sign)
+        signs = {c: float(sign) for c in signed} if np.isscalar(sign) else dict(sign)
     best = (signs, *one(signs))
     tried[_sign_key(signs)] = float(best[2]["log_likelihood"])
     if sign is None:
-        for c in channels:
+        for c in signed:
             trial = dict(best[0]); trial[c] = -trial[c]
             cand = (trial, *one(trial))
             tried[_sign_key(trial)] = float(cand[2]["log_likelihood"])
@@ -368,6 +442,7 @@ def fit_run(
     return {
         "fit_names": names,
         "channels": grid.channels,
+        "inputs": in_names,
         "nuisance": nuisance,
         "sign": dict(signs),
         "log_likelihood_by_sign": tried,
