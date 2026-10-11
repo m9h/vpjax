@@ -1,0 +1,62 @@
+{
+ "settings": {
+  "seeds": [
+   0,
+   1,
+   2
+  ],
+  "only": [
+   "snr"
+  ],
+  "duration": 1680.0,
+  "tr": 2.0,
+  "eeg_dt": 0.1,
+  "snr": [
+   3.0
+  ],
+  "restarts": 4,
+  "onset": null,
+  "rise": null,
+  "decay": null,
+  "beta": null,
+  "output": "/private/tmp/claude-501/-Users-mhough-Workspace/8b38602c-0d38-4735-b718-d92cba9f81d8/scratchpad/sim_rate_1680_dt01.json"
+ },
+ "snr": {
+  "bold_only": {
+   "n": 3,
+   "identifiable": 0,
+   "curvature_ratio_median": 0.0011517738457769156,
+   "relative_se_median": {
+    "kappa": 0.12904736399650574,
+    "tau": 0.28035399317741394,
+    "tau_z": 0.3629562258720398,
+    "q_z": 0.7097694277763367
+   },
+   "relative_error_median": {
+    "kappa": 0.08938991434353734,
+    "tau": 0.2202296092514192,
+    "tau_z": 0.22381019592285156,
+    "q_z": 0.6593853011727333
+   }
+  },
+  "3.0": {
+   "n": 3,
+   "identifiable": 3,
+   "curvature_ratio_median": 0.020401550456881523,
+   "relative_se_median": {
+    "kappa": 0.011064350605010986,
+    "tau": 0.012640026398003101,
+    "tau_z": 0.05399598181247711,
+    "q_z": 0.023701908066868782
+   },
+   "relative_error_median": {
+    "kappa": 0.005395596041884644,
+    "tau": 0.01235421798950861,
+    "tau_z": 0.03104400634765625,
+    "q_z": 0.038502994924783686
+   }
+  }
+ },
+ "fixed": {},
+ "drug": {}
+}

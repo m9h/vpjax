@@ -440,6 +440,44 @@ pathway exists because the motor-strip BOLD on ds003768 carries as much
 power near Nyquist as below 0.08 Hz — respiration aliased at TR 2.1 s —
 and a faster TR samples it directly.
 
+### Can a drug that only adds noise fake a drug effect?
+
+This had to be answered before any of the above could be trusted on drug
+data, and the question came from the data rather than from theory: in
+ds006072 the acute psilocybin runs carry three to five times the
+baseline high-frequency BOLD power (up to 54% of the band above 0.1 Hz
+against 5–13% at baseline), which is what motion and physiology look
+like when a drug raises heart rate, breathing and movement. If that
+extra noise could be absorbed by the drive parameters, every drug study
+using a generative model would inherit a false-positive mode.
+
+`scripts/noise_confound_case.py` simulates a 28-minute run with **no
+drug effect on the drive at all** and the BOLD observation noise tripled
+during the acute window, then fits with a free drug gain (3 seeds):
+
+| condition | true gain | fitted gain | as % of a real effect | 2ΔLL vs gain = 0 | identifiable |
+|---|---|---|---|---|---|
+| noise pinned at the baseline estimate | 0 | 0.00000 | 0.00% | 0.00 | 0/3 |
+| noise modelled per phase | 0 | 0.00000 | 0.00% | 0.00 | 1/3 |
+| real effect, constant noise | 0.5 | 0.51488 | 103% | 327.45 | 3/3 |
+
+The separation is absolute: a noise-only drug effect gives no likelihood
+reason whatever to prefer a drug effect on the drive, while a real one
+gives a likelihood ratio of 327. The first row is the worst case — the
+noise is pinned at the pre-infusion estimate, so the extra variance has
+nowhere to go but the state parameters — and it still does not move the
+gain. The reason is structural: the drive reaches the BOLD through the
+Balloon, which low-passes it, so a noise increase puts power at
+frequencies no drive can reach.
+
+Two things to read carefully. The gain is estimated on the log scale,
+where zero is an infinitely distant boundary, so a fit that wants no
+effect runs it to ~1e-9 and its standard error degenerates — a Wald
+ratio there is meaningless and the likelihood ratio is the statistic to
+use. And the null rows are correctly *not* identifiable: with no effect
+present the gain is unconstrained, and the diagnostic says so rather
+than returning a confident zero.
+
 ### A dataset this cannot be run on
 
 Worth recording, since it is the common case. The public release that

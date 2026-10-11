@@ -17,6 +17,21 @@ All notable changes to vpjax are documented in this file.
 
 ### Added
 
+- `scripts/noise_confound_case.py`: a specificity test for drug studies.
+  A drug that only triples the BOLD observation noise in the acute window
+  produces no drug effect on the drive (fitted gain 0.00000, likelihood
+  ratio 0.00 against a gain of zero) while a real effect of the same
+  geometry is recovered to 103% with a ratio of 327. Prompted by the
+  acute psilocybin runs in ds006072 carrying 3-5x the baseline
+  high-frequency power. The gain is tested by likelihood ratio, not a
+  Wald ratio, because zero is a boundary on the log scale.
+- `vpjax/validation/dmt_imaging.py`: loader for the public Timmermann
+  et al. (2023) DMT EEG-fMRI release, which refuses both its BOLD (band-
+  pass filtered) and its EEG regressors (HRF-convolved) by default and
+  explains why; `check_passband` measures the first condition for any
+  series. `scripts/validate_dmt_statespace.py` documents the negative
+  result and `docs/dmt_data_request.md` drafts the upstream request.
+
 - Recorded-run fits (`eeg_fmri_statespace`): measured **vascular inputs**
   (`inputs=`; breathing depth into the flow-inducing signal through a
   first-order lag with free gain and latency), a **noise floor** refit
