@@ -299,7 +299,29 @@ The BOLD-only arm's innovations are white (variance 0.97) and its
 parameters are wrong by three orders of magnitude on `q_z`: from 151
 volumes, a fast large-amplitude drive through a slow balloon is
 indistinguishable from a slow small drive through a fast one. So the
-fast channel is not buying precision here, it is buying identifiability.
+second channel is not buying precision here, it is buying
+identifiability.
+
+**And it does not have to be a fast channel.** Separating the sampling
+rate from the run length (3 seeds, SNR 3, all identifiable 3/3):
+
+| run length | envelope rate | κ | τ | τ_z | q_z |
+|---|---|---|---|---|---|
+| 300 s | 10 Hz | 0.024 | 0.027 | 0.12 | 0.051 |
+| 300 s | 0.5 Hz (= the TR) | 0.077 | 0.084 | 0.16 | 0.15 |
+| 1680 s | 10 Hz | 0.011 | 0.013 | 0.054 | 0.024 |
+| 1680 s | 0.5 Hz (= the TR) | 0.035 | 0.037 | 0.073 | 0.069 |
+
+An envelope sampled once per volume identifies every parameter at either
+run length; the rate then buys about a factor of three in precision at
+fixed duration, and the duration about the √n one would expect. Over 28
+minutes with a drug-shaped input, a TR-rate envelope recovers the drug
+gain to 8% where BOLD alone leaves it at 44% and formally
+unidentifiable. So what identifiability argues for is a *simultaneous*
+second observation of the same realisation, not a fast one — the case
+for a short TR and for clean in-bore EEG has to be made on precision,
+aliasing and signal quality, which it can be, rather than on
+identifiability.
 
 That figure describes the estimator under this model, not any recording.
 A model misspecified in a way EEG cannot see would show the same benefit
@@ -417,6 +439,34 @@ Breathing depth did not drive global BOLD on this run; the vascular-input
 pathway exists because the motor-strip BOLD on ds003768 carries as much
 power near Nyquist as below 0.08 Hz — respiration aliased at TR 2.1 s —
 and a faster TR samples it directly.
+
+### A dataset this cannot be run on
+
+Worth recording, since it is the common case. The public release that
+accompanies Timmermann et al. (2023), the one serotonergic-psychedelic
+dataset with simultaneous EEG we could find, cannot support this
+analysis as published — and the reason is a preprocessing choice, not a
+shortage of data. Its parcellated BOLD series are band-pass filtered to
+roughly 0.01–0.08 Hz: the global mean carries 0.00% of its power above
+0.08 Hz, against 2.5% for an unfiltered run at the same TR. An
+innovation likelihood predicts each volume from the previous one and
+treats the remainder as white, so such a series cannot be whitened under
+any parameters — 14 subject-conditions come back with innovation lag-1
+between +0.50 and +0.61 while the variance is correctly 0.99, and the
+drive time constant converges on the filter's corner rather than on
+physiology (`docs/results/dmt_release_bandpass_failure.txt`). Its EEG
+regressors are separately unusable as observations, having already been
+convolved with an HRF by the release's own pipeline.
+`vpjax.validation.dmt_imaging` loads both, refuses both by default, and
+explains why; `docs/dmt_data_request.md` drafts the request for the two
+upstream products that would fix it.
+
+The general point for anyone sharing data: **band-pass filtering and
+HRF convolution are not neutral conveniences.** They discard exactly the
+information a generative model needs, and they do it invisibly — the
+filtered series looks better by every summary statistic. Sharing the
+parcellated series one step earlier costs nothing and preserves the
+option.
 
 ## Dependencies
 
