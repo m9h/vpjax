@@ -1,0 +1,8 @@
+run,roi,arm,n_obs,loglik,converged,identifiable,curvature,tau_z,tau_z_se,sign_margin,floored,dropped,bold_var,bold_lag1,gain_eeg,gain_eeg_se,eeg_var,eeg_lag1,gain_pupil,gain_pupil_se,pupil_var,pupil_lag1,beta_respiration,beta_respiration_se
+sub-01_ses-01_task-rest,global,bold,288,1344.5,False,True,1.43e-02,9.82,0.33,,,,0.99,+0.02,,,,,,,,,,
+sub-01_ses-01_task-rest,global,eeg,1497,-307.2,False,False,1.57e-03,9.20,0.36,6.3,eeg,,0.99,+0.01,-3.93,0.29,1.00,+0.00,,,,,,
+sub-01_ses-01_task-rest,global,pupil,631,1283.1,False,False,1.88e-02,15.09,0.28,9.6,pupil,,1.07,+0.06,,,,,-18,0.20,0.87,+0.10,,
+sub-01_ses-01_task-rest,global,eeg+pupil,1840,-378.9,False,False,-6.60e-04,9.62,0.35,10.7,pupil,,0.99,+0.01,-3.8,0.31,1.00,+0.00,-0.973,1.24,0.95,+0.14,,
+sub-01_ses-01_task-rest,global,~respiration,288,1344.9,False,False,6.58e-04,9.53,0.34,0.4,,,0.99,+0.02,,,,,,,,,-0.00346,2.03
+sub-01_ses-01_task-rest,global,eeg+~respiration,1497,-307.2,True,False,-2.64e-07,9.18,0.36,0.0,eeg,,0.99,+0.01,-3.93,0.29,1.00,+0.00,,,,,+9.88e-06,0.00
+sub-01_ses-01_task-rest,global,eeg+pupil+~respiration,1840,-379.1,False,False,-6.52e-05,9.36,0.35,10.6,pupil,,0.99,+0.02,-3.97,0.29,1.00,+0.00,-0.0967,3.92,0.95,+0.15,+0.00107,5.74

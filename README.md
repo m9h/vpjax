@@ -349,43 +349,74 @@ parameters, it is what makes the drug effect an estimable quantity.
 
 ### On a recording
 
-`scripts/validate_ds003768_statespace.py` runs the same two arms on a
-10-minute resting run from OpenNeuro ds003768 (32-channel Brain Products
-EEG at 5 kHz inside a 3T Prisma, TR 2.1 s), using the global BOLD mean
-and the occipital alpha envelope at 10 Hz after gradient and pulse
-artifact subtraction (`validation/eeg_artifacts.py`, a deliberately
+`scripts/validate_ds003768_statespace.py` runs the same arms on resting
+runs from OpenNeuro ds003768 (32-channel Brain Products EEG at 5 kHz in a
+3T Prisma, TR 2.1 s), using the global BOLD mean or an ROI mean
+(`scripts/ds003768_rois.py`: visual cortex and motor strip via FSL and
+Harvard-Oxford) against the occipital alpha envelope after gradient and
+pulse artifact subtraction (`validation/eeg_artifacts.py`, a deliberately
 plain AAS baseline). Nothing is known here, so the noise variances and
-the EEG loading are estimated too. On sub-01, run 1:
+the EEG loading are estimated too; the envelope is fitted at 2 Hz, each
+fast channel has its own nuisance state, κ and τ carry weak log-normal
+priors, and a channel whose noise variance collapses is refit at a floor
+(`validation/eeg_fmri_statespace.py` explains each of these — every one
+was forced by a failure mode the recordings produced). Six subjects, one
+10-minute run each, three ROIs; the full table is in
+`docs/results/ds003768_rest_run1_sub01-06.csv`.
 
-- **BOLD only** reproduces the simulation's pathology on real data: the
-  innovations are white (variance 0.99, lag-1 0.00) and the fit is not
-  identifiable (curvature ratio −2e-5), with the drive collapsed to white
-  noise (τ_z = 0.02 s, q_z = 24, relative SEs 3.4 and 6.8).
-- **BOLD + EEG with one shared state** is rejected by whiteness: the fit
-  pins the state to the envelope, drives the EEG noise variance to zero,
-  and leaves the BOLD innovations autocorrelated at 0.89. The alpha
-  envelope has structure at 0.1–0.3 s that no drive passing through the
-  Balloon can share with a 2 s BOLD series.
-- **BOLD + EEG with an EEG-specific nuisance state** (a fast OU process
-  the BOLD never sees; the default in `eeg_fmri_statespace`) is
-  calibrated on both channels (BOLD 0.99 / 0.01, EEG 1.00 / 0.11) and
-  248 log-likelihood units better. The shared drive comes out at
-  τ_z = 2.2 s with a negative alpha loading, as the alpha–BOLD literature
-  would predict, but its parameters are weakly determined (relative SEs
-  0.3–0.9) and the arm is not identifiable as a whole: the EEG noise
-  variance is redundant with a 0.18 s nuisance process sampled at 0.1 s.
+- **BOLD alone reproduces the simulation's pathology on real data.** The
+  innovations are white in all 18 arms (variance 0.99, |lag-1| ≤ 0.09),
+  and the drive parameters are not identifiable; with the global mean
+  the drive collapses to white noise (τ_z 0.02 s, q_z 24) on sub-01.
+- **A single shared state is rejected by whiteness** (BOLD innovation
+  lag-1 0.89 on sub-01): the alpha envelope has structure at 0.1–0.3 s
+  that no drive passing through the Balloon can share with a 2 s BOLD
+  series. The nuisance state fixes it, and every joint arm below is
+  white on both channels.
+- **The alpha loading is negative in 16 of 18 arms** (the two exceptions
+  have relative SEs of 1.5 and 3, i.e. null). In two subjects every ROI
+  decides the sign by 7–15 log-likelihood units with the loading at
+  ±18%; in two others it is undecided. The alpha–BOLD inverse relation
+  of Goldman et al. (2002) and Laufs et al. (2003) is recovered per
+  subject from one run, with its uncertainty.
+- **It is not visual-specific.** Motor-strip loadings are as strong and
+  as well determined as visual ones in every subject. At rest the
+  envelope reports a global vigilance process, not visual-cortex
+  activity, so regional pairing buys nothing here; it would under a
+  visual task or a regionally selective drug, which is a statement
+  about design, not about the method.
+- **Where the coupling is strongest the joint fit makes the drive fast.**
+  In the two well-determined subjects τ_z moves from 4–6 s (BOLD only) to
+  0.5 s (joint) — the envelope's own timescale. A 0.5 s drive through the
+  Balloon leaves almost no BOLD variance, so this is the EEG defining the
+  drive with BOLD unable to object at TR 2.1 s. At TR 0.8 s it can, and
+  the shared timescale becomes a measured quantity rather than whichever
+  channel dominates the likelihood; that is one of the questions the
+  design grid in `scripts/simultaneity_case.py` is built to answer.
 
-The useful number is the one the last arm implies. The shared drive
-accounts for about 10% of the envelope's SD — roughly 1% of its
-variance — so the *effective* SNR of a global alpha envelope with respect
-to the drive a global BOLD series sees is around 0.1 — right at the
-sweep's breakeven. That is the gap between the simulation and a recording,
-and it is a property of the global average at rest, not of the method:
-regional pairings (occipital alpha against visual cortex) and a run with
-a drive worth the name — a task, or a drug — raise the shared fraction,
-and the identifiability machinery says by how much before anyone is
-scanned. Whether a protocol clears the bar is now a computation with
-inputs the lab controls.
+`scripts/validate_natview_statespace.py` does the same on NKI NATVIEW
+(Telesford et al. 2023; 64-channel EEG, EyeLink pupil, respiration belt,
+all put on one clock through the scanner triggers each stream recorded,
+`validation/natview.py`). On one resting run (`docs/results/natview_sub01_rest.csv`):
+
+| arm | drive τ_z | loading on drive | sign margin |
+|---|---|---|---|
+| alpha envelope | 9.2 s | −3.9 ± 29% | 6.3 |
+| pupil area | 15.1 s | −18.0 ± 20% | 9.6 |
+| envelope + pupil | 9.6 s | eeg −3.8 ± 31%, pupil 0.97 ± 124% | 10.7 |
+| respiration as a vascular input | 9.5 s | β ≈ 0 ± 200% | 0.4 |
+
+Pupil is the strongest single fast channel on this run — a 15 s arousal
+process with a large negative loading (dilation with BOLD decrease) — and
+the envelope couples to a faster 9 s process at a third of the strength.
+Jointly the envelope keeps the drive and the pupil's loading goes to
+zero: one latent state cannot be both. That argues for a second, slower
+arousal drive alongside the neural one, which is the next structural
+step and will be taken once more subjects say the pattern holds.
+Breathing depth did not drive global BOLD on this run; the vascular-input
+pathway exists because the motor-strip BOLD on ds003768 carries as much
+power near Nyquist as below 0.08 Hz — respiration aliased at TR 2.1 s —
+and a faster TR samples it directly.
 
 ## Dependencies
 
