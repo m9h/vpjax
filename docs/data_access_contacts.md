@@ -33,10 +33,15 @@ nicely -- it needs a data transfer agreement.
 |---|---|---|
 | **Inhaled DMT EEG, 35 participants** (Pallavicini, Cavanna, Tagliazucchi, with Carhart-Harris & Timmermann) | **raw `.bdf`** EEG: DMT, eyes-open, eyes-closed, plus psychometrics | Zenodo <https://doi.org/10.5281/zenodo.3992359>, CC BY 4.0, open. No fMRI. |
 | **Ayahuasca fMRI 2015** (Palhano-Fontes et al.) | resting + verbal-fluency + structural, before/after ayahuasca, as raw-image zips | Harvard Dataverse <https://doi.org/10.7910/DVN/28619>, **CC0**, open, v2, 6 files |
+| **LSD 2016, Imperial** (Carhart-Harris et al.) | raw MRI, **15** of the mega-analysis's 19 participants | OpenNeuro **ds003059**, CC0, open |
 | **ds006072 psilocybin / methylphenidate** (WashU precision mapping) | raw, minimally preprocessed and processed BIDS; the series are **unfiltered** (10-15% of power above 0.1 Hz), so usable for innovation-likelihood fits | OpenNeuro, open |
 
-The first two are worth stating plainly because the usual assumption is
-that nothing raw is public. Two of the eleven datasets already are.
+Against the mega-analysis's Table 1, **three of the eleven** are raw and
+open: Imperial LSD 2016 (ds003059), WashU psilocybin (ds006072) and UFRN
+ayahuasca 2015 (Dataverse). The Imperial DMT 2023 release is public but
+derived and band-passed, so it does not count. PsiConnect (ds006110, 65
+subjects, MRI + EEG, CC0) is raw and open too but was not in the
+mega-analysis.
 
 ## Needs a request
 
@@ -44,7 +49,7 @@ that nothing raw is public. Two of the eleven datasets already are.
 |---|---|---|---|
 | **DMT EEG-fMRI, n=20** (Timmermann et al. 2023 PNAS, <https://doi.org/10.1073/pnas.2218949120>) | Christopher Timmermann; Robin Carhart-Harris as senior author | `cbt14@ic.ac.uk` (from the release repo) — **likely stale**: 2025-26 papers list him at UCL Psychology and at Exeter Psychology, not Imperial | the public release is band-passed and HRF-convolved; see below |
 | same dataset's **EKG** | Lorenzo Pasquini, UCSF Neurology/Neuroscape | no email verified; UCSF Neurology | he has already published on it — see the next section |
-| **Psilocybin 2012 (n=15)** and **LSD 2016 (n=19)**, Imperial | Robin Carhart-Harris | `r.carhart-harris@imperial.ac.uk` is the 2016 address and is **stale**; he is at UCSF Neurology / Neuroscape | senior author on both; a search summary attributed an "available on request from Carhart-Harris" statement to a 2025 paper from the group, which I did not verify against the paper |
+| **Psilocybin 2012 (n=15)**, and the 4 LSD 2016 participants not in ds003059, Imperial | Robin Carhart-Harris | `r.carhart-harris@imperial.ac.uk` is the 2016 address and is **stale**; he is at UCSF Neurology / Neuroscape | senior author on both; a search summary attributed an "available on request from Carhart-Harris" statement to a 2025 paper from the group, which I did not verify against the paper |
 | **PsiConnect, n=62 psilocybin** (Monash), multi-echo fMRI + EEG + diffusion, resting plus guided meditation, music and movie, half the cohort meditation-trained, follow-up to one year. <https://doi.org/10.1038/s41597-026-07312-1> | Adeel Razi, Monash | `adeel.razi@monash.edu` | OpenNeuro **ds006110** / NEMAR **on006110**. The largest single-site psychedelic dataset, and the only big one with EEG. **Unconfirmed whether the EEG is simultaneous with fMRI or a separate session** — worth one email before anything else |
 | **ds006072 descriptor / replication sessions** (<https://doi.org/10.1038/s41597-025-05189-0>) | Subha Subramanian (corresponding); Joshua Siegel; Nico Dosenbach | `ssubram5@bidmc.harvard.edu`; `Joshua.Siegel@nyulangone.org` (current; `jssiegel@wustl.edu` was the 2024 address) | Siegel and Dosenbach are now both at the NYU Langone Center for Psychedelic Medicine |
 | **Psilocybin n=23 (2020)** and **LSD n=25 (2018)**, Zurich | Katrin Preller; Franz Vollenweider | none verified; Dept of Adult Psychiatry and Psychotherapy, University of Zurich | the LSD effective-connectivity paper points to a Bitbucket deposit; worth checking before writing |
