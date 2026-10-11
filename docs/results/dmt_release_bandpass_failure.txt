@@ -1,0 +1,15 @@
+20 subjects, 840 volumes of 840 (whole), TR 2.0 s, assumed fractional SD 0.01
+global             S01 DMT  tau_z    6.62 +- 0.11  q_z  0.000703  ident=False curv +1.09e-07  bold var 0.99 lag1 +0.59
+global             S01 PCB  tau_z    6.72 +- 0.11  q_z  0.000773  ident=False curv +2.78e-08  bold var 1.00 lag1 +0.57
+global             S02 DMT  tau_z    5.77 +- 0.10  q_z  0.000856  ident=False curv +3.69e-08  bold var 0.99 lag1 +0.56
+global             S02 PCB  tau_z    5.73 +- 0.10  q_z  0.000842  ident=False curv +7.57e-08  bold var 1.00 lag1 +0.61
+global             S03 DMT  tau_z    6.59 +- 0.11  q_z  0.000756  ident=False curv +4.06e-08  bold var 0.99 lag1 +0.59
+global             S03 PCB  tau_z    5.94 +- 0.10  q_z   0.00096  ident=False curv +6.51e-08  bold var 0.99 lag1 +0.57
+global             S06 DMT  tau_z    6.51 +- 0.11  q_z  0.000665  ident=False curv +8.12e-09  bold var 0.99 lag1 +0.57
+global             S06 PCB  tau_z    6.33 +- 0.11  q_z  0.000827  ident=False curv +2.84e-07  bold var 0.99 lag1 +0.50
+global             S07 DMT  tau_z    7.15 +- 0.11  q_z  0.000705  ident=False curv +2.08e-07  bold var 1.00 lag1 +0.51
+global             S07 PCB  tau_z    6.83 +- 0.11  q_z  0.000647  ident=False curv +3.30e-08  bold var 1.00 lag1 +0.58
+global             S08 DMT  tau_z    6.73 +- 0.11  q_z  0.000767  ident=False curv +2.96e-07  bold var 0.99 lag1 +0.56
+global             S08 PCB  tau_z    6.43 +- 0.10  q_z  0.000838  ident=False curv +1.44e-07  bold var 1.00 lag1 +0.58
+global             S09 DMT  tau_z    5.51 +- 0.10  q_z  0.000975  ident=False curv +5.20e-08  bold var 1.00 lag1 +0.54
+global             S09 PCB  tau_z    5.67 +- 0.10  q_z  0.000831  ident=False curv +1.37e-08  bold var 0.99 lag1 +0.56

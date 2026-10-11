@@ -1,5 +1,13 @@
 """BOLD-only identifiability on the public DMT EEG-fMRI release, DMT vs placebo.
 
+**This driver documents a negative result.**  The released series are
+band-pass filtered to roughly 0.01-0.08 Hz, so the innovations cannot be
+white whatever the parameters: measured across subjects they come back
+with lag-1 autocorrelation near +0.55.  It passes ``filtered_ok=True``
+deliberately, to produce that evidence; the fitted time constants
+describe the filter, not the physiology, and must not be reported as a
+drug effect.  See :mod:`vpjax.validation.dmt_imaging`.
+
 The release carries parcellated, z-scored BOLD and HRF-convolved EEG
 regressors (see :mod:`vpjax.validation.dmt_imaging`), so this is not the
 fusion test -- it is the drug-data test of the identifiability
@@ -55,7 +63,7 @@ def main():
     for net in a.networks:
         for sub in subs:
             for cond in ("DMT", "PCB"):
-                ts = network_series(load_parcels(a.root, sub, cond), net)[keep]
+                ts = network_series(load_parcels(a.root, sub, cond, filtered_ok=True), net)[keep]
                 bold = bold_from_zscored(ts, a.assumed_fractional_sd)
                 r = fit_run(times[keep], bold, restarts=a.restarts, max_steps=a.max_steps)
                 results[f"{net}/{sub}/{cond}"] = r

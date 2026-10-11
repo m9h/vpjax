@@ -5,6 +5,7 @@ import pytest
 
 from vpjax.validation.dmt_imaging import (
     ACUTE_S,
+    check_passband,
     BANDS,
     INFUSION_S,
     N_VOLUMES,
@@ -47,11 +48,11 @@ class TestLayout:
 
     def test_parcels_shape_checked(self, release):
         from scipy.io import savemat
-        assert load_parcels(release, "S01", "DMT").shape == (112, N_VOLUMES)
+        assert load_parcels(release, "S01", "DMT", filtered_ok=True).shape == (112, N_VOLUMES)
         savemat(str(release / "fMRI" / "LongS98PCB.mat"), {"BOLD_AAL": np.zeros((50, 10))})
         savemat(str(release / "fMRI" / "LongS98DMT.mat"), {"BOLD_AAL": np.zeros((50, 10))})
         with pytest.raises(ValueError, match="expected"):
-            load_parcels(release, "S98", "DMT")
+            load_parcels(release, "S98", "DMT", filtered_ok=True)
 
 
 class TestNetworks:
@@ -61,7 +62,7 @@ class TestNetworks:
         assert np.unique(allp).size == 112        # a partition, no overlaps or gaps
 
     def test_network_mean_matches_manual(self, release):
-        p = load_parcels(release, "S01", "DMT")
+        p = load_parcels(release, "S01", "DMT", filtered_ok=True)
         assert np.allclose(network_series(p, "visual"), p[NETWORKS["visual"]].mean(axis=0))
         assert np.allclose(network_series(p, "global"), p.mean(axis=0))
         with pytest.raises(KeyError):
@@ -118,3 +119,34 @@ class TestEEGGuard:
             load_eeg_bands(release, "Insula", "DMT", convolved_ok=True)
         with pytest.raises(KeyError):
             load_eeg_bands(release, "Occipital", "drug", convolved_ok=True)
+
+
+class TestPassband:
+    def test_white_series_is_broadband(self):
+        rng = np.random.default_rng(0)
+        band = check_passband(rng.normal(size=N_VOLUMES))
+        assert band["broadband"] and band["fraction_above_cutoff"] > 0.5
+        assert band["nyquist_hz"] == pytest.approx(0.25)
+
+    def test_band_passed_series_is_caught(self):
+        from scipy.signal import butter, sosfiltfilt
+        rng = np.random.default_rng(0)
+        x = rng.normal(size=N_VOLUMES)
+        sos = butter(4, [0.01, 0.08], btype="band", fs=1 / TR, output="sos")
+        band = check_passband(sosfiltfilt(sos, x))
+        assert not band["broadband"]
+        assert band["fraction_above_cutoff"] < 1e-3
+
+    def test_loader_refuses_a_filtered_release(self, release, tmp_path):
+        """A release whose series are filtered must not load by default."""
+        from scipy.io import savemat
+        from scipy.signal import butter, sosfiltfilt
+        rng = np.random.default_rng(1)
+        sos = butter(4, [0.01, 0.08], btype="band", fs=1 / TR, output="sos")
+        x = sosfiltfilt(sos, rng.normal(size=(112, N_VOLUMES)), axis=-1)
+        x = (x - x.mean(axis=1, keepdims=True)) / x.std(axis=1, keepdims=True)
+        for cond in ("DMT", "PCB"):
+            savemat(str(release / "fMRI" / f"LongS50{cond}.mat"), {"BOLD_AAL": x})
+        with pytest.raises(ValueError, match="band-pass filtered"):
+            load_parcels(release, "S50", "DMT")
+        assert load_parcels(release, "S50", "DMT", filtered_ok=True).shape == (112, N_VOLUMES)

@@ -5,6 +5,23 @@ effects of DMT assessed via EEG-fMRI" (PNAS 120:e2218949120).  This is a
 derived release, not raw recordings, and the shapes of what it does
 contain decide what can be asked of it:
 
+**The released BOLD series are band-pass filtered, and that makes them
+unusable for an innovation-based fit.**  Measured on the release: 0.00%
+of the global series' power lies above 0.08 Hz and 1.3% below 0.01 Hz,
+against 2.5% and 31% for an unfiltered run of the same TR (ds003768).
+An innovation likelihood asks the model to predict each volume from the
+last and treats the remainder as white; a series with no power above
+0.08 Hz cannot produce white innovations under any parameters, and in
+fact the fits come back with innovation lag-1 autocorrelation near +0.55
+across subjects while the variance is correctly 1.0.  The time constants
+are then fitted to the filter rather than to the physiology.
+:func:`check_passband` measures this and :func:`load_parcels` refuses by
+default.  Modelling the filter instead is not a way out: it removes
+essentially all the power above 0.08 Hz, so inverting it is ill-posed,
+its exact specification is not documented, and the high-frequency
+content is precisely what pins the Balloon's time constants.  What this
+analysis needs is the parcellated series *without* the band-pass step.
+
 **fMRI** ``fMRI/Long<subject><condition>.mat`` holds ``BOLD_AAL``, 112
 AAL parcels x 840 volumes, one file per subject per condition.  The
 series are **z-scored per parcel**: every parcel has mean 0 and SD 1, so
@@ -87,8 +104,43 @@ def subjects(root: str | Path) -> list[str]:
     return [s for s, c in sorted(found.items()) if c == {"DMT", "PCB"}]
 
 
-def load_parcels(root: str | Path, subject: str, condition: str) -> np.ndarray:
-    """``BOLD_AAL`` for one subject and condition, shape (112, 840), z-scored."""
+def check_passband(
+    ts: np.ndarray, tr: float = TR, cutoff_hz: float = 0.1, min_fraction: float = 0.005
+) -> dict:
+    """Fraction of a series' power above *cutoff_hz*, and whether it is enough.
+
+    A band-passed series has essentially none, and an innovation-based
+    fit cannot whiten it (see the module docstring).  The threshold is
+    deliberately low: an unfiltered resting run of this TR carries a few
+    per cent above 0.1 Hz, a filtered one carries parts in ten thousand,
+    so anything in between is already suspicious.
+    """
+    y = np.asarray(ts, dtype=float)
+    k = np.arange(y.size)
+    y = y - np.polyval(np.polyfit(k, y, 1), k)
+    freq = np.fft.rfftfreq(y.size, tr)
+    power = np.abs(np.fft.rfft(y)) ** 2
+    total = power[1:].sum()
+    fraction = float(power[freq > cutoff_hz].sum() / total) if total > 0 else 0.0
+    return {
+        "fraction_above_cutoff": fraction,
+        "cutoff_hz": cutoff_hz,
+        "broadband": fraction >= min_fraction,
+        "nyquist_hz": 0.5 / tr,
+    }
+
+
+def load_parcels(
+    root: str | Path, subject: str, condition: str, filtered_ok: bool = False
+) -> np.ndarray:
+    """``BOLD_AAL`` for one subject and condition, shape (112, 840), z-scored.
+
+    Raises unless *filtered_ok*, because the released series are
+    band-pass filtered and cannot support an innovation-based fit; see
+    the module docstring.  Pass ``filtered_ok=True`` to load them for
+    anything that does not depend on the high frequencies, such as
+    reproducing the release's own connectivity analyses.
+    """
     from scipy.io import loadmat
 
     path = Path(root) / "fMRI" / f"Long{subject}{condition}.mat"
@@ -96,6 +148,16 @@ def load_parcels(root: str | Path, subject: str, condition: str) -> np.ndarray:
     data = np.asarray(data, dtype=float)
     if data.shape != (112, N_VOLUMES):
         raise ValueError(f"{path.name}: expected (112, {N_VOLUMES}), got {data.shape}")
+    if not filtered_ok:
+        band = check_passband(data.mean(axis=0))
+        if not band["broadband"]:
+            raise ValueError(
+                f"{path.name}: only {100 * band['fraction_above_cutoff']:.3f}% of the "
+                f"power is above {band['cutoff_hz']} Hz, so this series is band-pass "
+                "filtered and an innovation-based state-space fit cannot whiten it; "
+                "pass filtered_ok=True to load it anyway, but do not read the fitted "
+                "time constants as physiology"
+            )
     return data
 
 
