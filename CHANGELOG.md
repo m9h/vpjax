@@ -17,6 +17,15 @@ All notable changes to vpjax are documented in this file.
 
 ### Added
 
+- Recorded-run fits (`eeg_fmri_statespace`): measured **vascular inputs**
+  (`inputs=`; breathing depth into the flow-inducing signal through a
+  first-order lag with free gain and latency), a **noise floor** refit
+  when a smooth channel's observation-noise variance collapses to zero
+  (reported in `noise_floored`), and **MAP fitting** with weak
+  log-normal priors on `kappa` and `tau` by default
+  (`weak_hemodynamic_priors`; `priors=None` for maximum likelihood).
+  `fit_statespace` and `parameter_uncertainty` take `log_prior`.
+
 - `vpjax/validation/natview.py`: loader for the NKI NATVIEW simultaneous
   EEG-fMRI dataset (Telesford et al. 2023; FCP-INDI, CC BY 4.0) putting
   EEG, pupil area and respiration-belt streams on one clock through the

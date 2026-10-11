@@ -365,6 +365,37 @@ def default_init(
 # Fitting
 # ---------------------------------------------------------------------------
 
+def weak_hemodynamic_priors(balloon: BalloonParams | None = None, log_sd: float = 0.5) -> dict:
+    """Log-normal priors on ``kappa`` and ``tau`` about the Balloon defaults.
+
+    Not literature priors: a width of 0.5 in the log is a factor of e
+    either side, loose enough to let the data move them and tight enough
+    to stop a transit time of 20 ms — which an unconstrained fit on a
+    recorded run will happily produce while bending the Balloon into a
+    pure delay for a slow drive.  Expressed as ``{name: (log_mean,
+    log_sd)}`` so callers can widen, narrow or add to them.
+    """
+    bp = BalloonParams() if balloon is None else balloon
+    return {"kappa": (float(np.log(bp.kappa)), log_sd), "tau": (float(np.log(bp.tau)), log_sd)}
+
+
+def make_log_prior(names: tuple[str, ...], priors: dict | None):
+    """Gaussian log-prior on the log-scale parameters named in *priors*."""
+    if not priors:
+        return None
+    idx = [names.index(n) for n in priors if n in names]
+    if not idx:
+        return None
+    mu = jnp.array([priors[names[i]][0] for i in idx])
+    sd = jnp.array([priors[names[i]][1] for i in idx])
+    idx = jnp.array(idx)
+
+    def log_prior(log_theta):
+        return -0.5 * jnp.sum(((log_theta[idx] - mu) / sd) ** 2)
+
+    return log_prior
+
+
 def _sign_key(signs: dict[str, float]) -> str:
     return ",".join(f"{c}:{s:+.0f}" for c, s in signs.items()) or "none"
 
@@ -384,8 +415,27 @@ def fit_run(
     restarts: int = 8,
     max_steps: int = 300,
     seed: int = 1,
+    noise_floor: float | None = 1e-2,
+    priors: dict | None = "weak",
 ) -> dict:
     """Fit one run with any set of auxiliary channels.
+
+    *priors* maps parameter names to ``(log_mean, log_sd)``; the default
+    ``"weak"`` is :func:`weak_hemodynamic_priors`, ``None`` fits by
+    maximum likelihood.  With priors the standard errors are posterior,
+    not sampling, quantities.
+
+    A smooth auxiliary series (a pupil trace, or an envelope binned at
+    0.5 s) is often described by its nuisance state alone, and the fit
+    runs that channel's observation-noise variance to zero.  That is a
+    legitimate answer about the data, but ``log r`` at minus infinity
+    has no curvature and the identifiability verdict for every other
+    parameter is lost with it.  So when a channel's fitted noise
+    variance falls below *noise_floor* (the channels are standardised,
+    so this is a fraction of unit variance) the fit is repeated with
+    that variance held at the floor; the result reports which channels
+    were floored in ``noise_floored``, and the first fit's estimate in
+    ``collapsed_noise``.  ``None`` disables the refit.
 
     ``t_env, env`` is shorthand for ``aux={"eeg": (t_env, env)}``.  With
     *sign* unspecified the loading signs are chosen greedily: all start
@@ -409,12 +459,14 @@ def fit_run(
     names = tuple(n for n in param_names(channels, nuisance, in_names) if n not in fixed)
     init = default_init(bold, channels, nuisance, in_names) if init is None else dict(init)
     init_vec = jnp.array([init[n] for n in names])
+    priors = weak_hemodynamic_priors() if priors == "weak" else (priors or {})
+    log_prior = make_log_prior(names, priors)
 
     def one(signs):
         build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance, inputs=inputs)
         fit = fit_statespace(
             build, grid, init=init_vec, max_steps=max_steps,
-            restarts=restarts, seed=seed,
+            restarts=restarts, seed=seed, log_prior=log_prior,
         )
         return build, fit
 
@@ -437,10 +489,29 @@ def fit_run(
             if np.isfinite(ll) and ll > float(best[2]["log_likelihood"]):
                 best = cand
     signs, build, fit = best
-    unc = parameter_uncertainty(build, grid, fit["log_theta"])
+
+    collapsed = {}
+    if noise_floor is not None:
+        est = dict(zip(names, (float(v) for v in fit["theta"])))
+        collapsed = {c: est[f"r_{c}"] for c in channels
+                     if f"r_{c}" in est and est[f"r_{c}"] < noise_floor}
+    if collapsed:
+        fixed = dict(fixed, **{f"r_{c}": noise_floor for c in collapsed})
+        names = tuple(n for n in names if n not in fixed)
+        init_vec = jnp.array([init[n] for n in names])
+        log_prior = make_log_prior(names, priors)
+        build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance, inputs=inputs)
+        fit = fit_statespace(
+            build, grid, init=init_vec, max_steps=max_steps,
+            restarts=restarts, seed=seed, log_prior=log_prior,
+        )
+    unc = parameter_uncertainty(build, grid, fit["log_theta"], log_prior=log_prior)
 
     return {
         "fit_names": names,
+        "noise_floored": sorted(collapsed),
+        "priors": {k: list(v) for k, v in priors.items()},
+        "collapsed_noise": collapsed,
         "channels": grid.channels,
         "inputs": in_names,
         "nuisance": nuisance,
@@ -473,6 +544,9 @@ def format_run(label: str, r: dict) -> str:
     signs = " ".join(f"{c}{s:+.0f}" for c, s in r["sign"].items()) or "none"
     lines = [f"{label}: log-lik {r['log_likelihood']:.1f} over {r['n_obs']:.0f} obs, "
              f"converged={r['success']}, signs {signs}"]
+    if r.get("noise_floored"):
+        lines.append("  noise floored for " + ", ".join(
+            f"{c} (collapsed to {v:.1e})" for c, v in r["collapsed_noise"].items()))
     if len(r["log_likelihood_by_sign"]) > 1:
         lines.append("  by sign: " + ", ".join(
             f"{k}: {v:.1f}" for k, v in r["log_likelihood_by_sign"].items()))

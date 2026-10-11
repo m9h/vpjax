@@ -184,3 +184,51 @@ class TestVascularInput:
         assert r["inputs"] == ("resp",)
         assert "beta_resp" in r["estimate"] and r["sign"]["resp"] in (-1.0, 1.0)
         assert set(r["log_likelihood_by_sign"]) == {"resp:+1", "resp:-1"}
+
+
+class TestNoiseFloor:
+    def test_collapsed_noise_is_refit_at_floor(self, run):
+        sim, env = run
+        t, x = standardise_envelope(env, sim["t_eeg"], 0.0, 120.0)
+        # Force the first fit to a collapsed noise variance by starting it
+        # there with no optimisation steps, then check the refit path.
+        init = default_init(sim["bold"], ("eeg",), True)
+        init["r_eeg"] = 1e-6
+        r = fit_run(sim["t_bold"], sim["bold"], t, x, init=init, sign=1.0,
+                    restarts=0, max_steps=1, noise_floor=1e-2)
+        assert r["noise_floored"] == ["eeg"]
+        assert r["collapsed_noise"]["eeg"] < 1e-2
+        assert "r_eeg" not in r["fit_names"] and r["fixed"]["r_eeg"] == 1e-2
+
+    def test_floor_can_be_disabled(self, run):
+        sim, env = run
+        t, x = standardise_envelope(env, sim["t_eeg"], 0.0, 120.0)
+        init = default_init(sim["bold"], ("eeg",), True)
+        init["r_eeg"] = 1e-6
+        r = fit_run(sim["t_bold"], sim["bold"], t, x, init=init, sign=1.0,
+                    restarts=0, max_steps=1, noise_floor=None)
+        assert r["noise_floored"] == [] and "r_eeg" in r["fit_names"]
+
+
+class TestPriors:
+    def test_log_prior_is_gaussian_in_log_space(self):
+        from vpjax.validation.eeg_fmri_statespace import make_log_prior
+        import jax.numpy as jnp
+        names = ("kappa", "tau", "q_z")
+        lp = make_log_prior(names, {"tau": (0.0, 0.5)})
+        assert float(lp(jnp.log(jnp.array([1.0, 1.0, 1.0])))) == 0.0
+        assert float(lp(jnp.log(jnp.array([1.0, np.e, 1.0])))) == pytest.approx(-2.0)
+        assert make_log_prior(names, None) is None
+        assert make_log_prior(names, {"beta_x": (0.0, 1.0)}) is None
+
+    def test_prior_pulls_an_unconstrained_parameter(self, run):
+        sim, _ = run
+        # Fix everything but tau and give tau a tight prior far from the
+        # likelihood's preference; the MAP must sit near the prior.
+        from vpjax.validation.eeg_fmri_statespace import BOLD_ONLY_NAMES
+        init = default_init(sim["bold"], ())
+        fixed = {n: init[n] for n in BOLD_ONLY_NAMES if n != "tau"}
+        r = fit_run(sim["t_bold"], sim["bold"], fixed=fixed, restarts=0, max_steps=60,
+                    priors={"tau": (float(np.log(5.0)), 0.05)})
+        assert abs(np.log(r["estimate"]["tau"]) - np.log(5.0)) < 0.2
+        assert r["priors"] == {"tau": [float(np.log(5.0)), 0.05]}

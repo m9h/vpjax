@@ -87,8 +87,14 @@ def fit_statespace(
     restarts: int = 0,
     restart_scale: float = 0.5,
     seed: int = 0,
+    log_prior: Callable[[Float[Array, "P"]], Float[Array, ""]] | None = None,
 ) -> dict[str, Float[Array, "..."]]:
     """Maximise the innovation likelihood with respect to the parameters.
+
+    With *log_prior* (a function of the log-scale parameters) the
+    objective is the log posterior and the fit is a MAP estimate, which
+    is how DCM regularises its hemodynamic parameters; the reported
+    ``log_likelihood`` is still the likelihood alone.
 
     Uses Optimistix BFGS on the negative mean log-likelihood per
     observation.  Dividing by the observation count keeps the
@@ -139,7 +145,10 @@ def fit_statespace(
     n_obs = grid.mask.sum()
 
     def objective(log_theta, args):
-        return -innovation_log_likelihood(build, log_theta, grid) / n_obs
+        ll = innovation_log_likelihood(build, log_theta, grid)
+        if log_prior is not None:
+            ll = ll + log_prior(log_theta)
+        return -ll / n_obs
 
     # BestSoFarMinimiser is not a refinement here, it is a correctness
     # requirement: with throw=False Optimistix returns the *last* iterate,
@@ -291,6 +300,7 @@ def parameter_uncertainty(
     build: Callable[[Float[Array, "P"]], dict],
     grid: ObservationGrid,
     log_theta: Float[Array, "P"],
+    log_prior: Callable[[Float[Array, "P"]], Float[Array, ""]] | None = None,
 ) -> dict[str, Float[Array, "..."]]:
     """Asymptotic uncertainty and an identifiability verdict, from curvature.
 
@@ -352,9 +362,13 @@ def parameter_uncertainty(
     recursion, so cost grows with the square of the parameter count.
     """
     def total_ll(lt):
-        return innovation_log_likelihood(build, lt, grid)
+        ll = innovation_log_likelihood(build, lt, grid)
+        return ll if log_prior is None else ll + log_prior(lt)
 
     log_theta = jnp.asarray(log_theta, dtype=float)
+    # With a prior this is the posterior curvature: a parameter the data
+    # do not constrain shows its prior SD, not infinity, so read the
+    # standard errors against the prior widths in that case.
     information = -jax.hessian(total_ll)(log_theta)
     information = 0.5 * (information + information.T)
 
