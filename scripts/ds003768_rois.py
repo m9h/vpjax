@@ -77,9 +77,13 @@ def main():
 
     # --- registration -------------------------------------------------------
     epi_mean = work / "epi_mean.nii.gz"
+    epi_brain = work / "epi_brain.nii.gz"
     t1_brain = work / "t1_brain.nii.gz"
     fsl("fslmaths", bold_path, "-Tmean", epi_mean)
-    fsl("bet", t1_path, t1_brain, "-R", "-f", "0.4")
+    # A proper EPI brain mask: thresholding the mean image keeps most of
+    # the field of view, which dilutes the global mean with background.
+    fsl("bet", epi_mean, epi_brain, "-m", "-f", "0.3", "-R")
+    fsl("bet", t1_path, t1_brain, "-R", "-B", "-f", "0.5")
     fsl("flirt", "-in", epi_mean, "-ref", t1_brain, "-dof", "6",
         "-omat", work / "epi2t1.mat", "-out", work / "epi2t1.nii.gz")
     fsl("flirt", "-in", t1_brain, "-ref", mni, "-dof", "12",
@@ -95,22 +99,31 @@ def main():
     data = img.get_fdata(dtype=np.float32)
     labels = np.asarray(nib.load(str(atlas_epi)).dataobj).astype(int)
     mean_img = data.mean(axis=-1)
-    brain = mean_img > np.percentile(mean_img, 10)
+    brain = np.asarray(nib.load(str(work / "epi_brain_mask.nii.gz")).dataobj) > 0
 
     series = {"global": data[brain].mean(axis=0)}
     counts = {"global": int(brain.sum())}
+    quality = {"global": 1.0}
     for roi, names in ROIS.items():
         mask = np.isin(labels, atlas_values(fsldir, names)) & brain
         if mask.sum() < 20:
             raise RuntimeError(f"{roi} mask has only {int(mask.sum())} voxels; registration failed?")
         series[roi] = data[mask].mean(axis=0)
         counts[roi] = int(mask.sum())
+        # A mask that landed partly outside the brain has a low mean
+        # intensity and a huge fractional SD; say so rather than let a
+        # registration failure masquerade as a physiological result.
+        rel = float(mean_img[mask].mean() / mean_img[brain].mean())
+        quality[roi] = rel
+        if rel < 0.7:
+            print(f"WARNING: {roi} mask mean intensity is {rel:.2f} of the brain mean; "
+                  "check the registration before trusting this series")
         nib.save(nib.Nifti1Image(mask.astype(np.uint8), img.affine), str(work / f"mask_{roi}.nii.gz"))
 
     tr = float(json.load(open(str(bold_path).replace(".nii.gz", ".json")))["RepetitionTime"])
-    np.savez(a.out, tr=tr, voxel_counts=json.dumps(counts),
+    np.savez(a.out, tr=tr, voxel_counts=json.dumps(counts), intensity_ratio=json.dumps(quality),
              **{f"bold_{k}": v.astype(np.float64) for k, v in series.items()})
-    print(f"{stem}: TR {tr} s, voxels {counts}; wrote {a.out}")
+    print(f"{stem}: TR {tr} s, voxels {counts}, intensity ratio {{{', '.join(f'{k}: {v:.2f}' for k, v in quality.items())}}}; wrote {a.out}")
 
 
 if __name__ == "__main__":
