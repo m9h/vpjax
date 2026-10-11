@@ -1,33 +1,41 @@
-"""Fit the drive-plus-Balloon model to a recorded EEG-fMRI run.
+"""Fit the drive-plus-Balloon model to a recorded run with auxiliary channels.
 
 The simulation study in :mod:`vpjax.validation.statespace_recovery`
 knows the truth; here nothing is known, so three things change:
 
 * the observation noise variances are estimated, not supplied;
-* the EEG envelope enters through a free loading ``gain`` on the drive
-  (the envelope is standardised, so ``gain`` is in drive units per SD of
-  log-envelope), with its sign chosen by the data -- alpha power is
-  usually inversely related to cortical activation in resting
-  EEG-fMRI (Goldman et al. 2002; Laufs et al. 2003), but "usually" is
-  not a modelling assumption worth hard-coding;
-* the EEG envelope gets its own nuisance state: a fast OU process that
-  the BOLD never sees.  On a recorded run the alpha envelope has
-  structure on the 0.1--0.3 s scale that no drive passing through the
-  Balloon can share with a 2 s BOLD series; with a single shared state
-  the fit pins that state to the envelope, drives the EEG noise
-  variance to zero and leaves the BOLD innovations autocorrelated at
-  0.9.  The nuisance state lets the shared drive be the slow component,
-  which is the only part BOLD can corroborate.  ``nuisance=False``
-  keeps the one-state model for comparison;
-* the verdict comes from innovation whiteness *and* identifiability,
-  on exactly the footing the simulation established: whiteness says
-  the model can describe the run, identifiability says whether the
+* every fast channel -- an EEG band envelope, pupil area, a respiratory
+  or cardiac measure -- enters through its own free loading ``gain_<c>``
+  on the shared drive (the channel is standardised, so the gain is in
+  drive units per SD), with its sign chosen by the data.  Alpha power is
+  usually inversely related to cortical activation in resting EEG-fMRI
+  (Goldman et al. 2002; Laufs et al. 2003), but "usually" is not a
+  modelling assumption worth hard-coding, and for pupil or respiration
+  there is no such convention at all;
+* each fast channel gets its own nuisance state: an OU process the BOLD
+  never sees.  On a recorded run the alpha envelope has structure on the
+  0.1--0.3 s scale that no drive passing through the Balloon can share
+  with a 2 s BOLD series; with a single shared state the fit pins that
+  state to the envelope, drives the EEG noise variance to zero and
+  leaves the BOLD innovations autocorrelated at 0.9.  The nuisance state
+  lets the shared drive be the slow component, which is the only part
+  BOLD can corroborate.  ``nuisance=False`` keeps the one-state model
+  for comparison;
+* the verdict comes from innovation whiteness *and* identifiability, on
+  exactly the footing the simulation established: whiteness says the
+  model can describe the run, identifiability says whether the
   parameters it did so with mean anything.
 
-Everything is a single global time series per modality.  That is the
-coarsest possible test and deliberately so: if the identifiability
-contrast between BOLD-only and BOLD+EEG does not appear at the global
-level, no regional analysis will rescue it.
+State layout is ``[z, s, f, v, q, n_1, ..., n_k]`` for *k* auxiliary
+channels with nuisance states.  Channels may be sparse -- a pupil trace
+that is valid a quarter of the time is a legitimate observation of the
+drive a quarter of the time, and the presence mask handles it without
+interpolation.
+
+Everything is a single time series per channel.  That is the coarsest
+possible test and deliberately so: if the identifiability contrast
+between BOLD-only and BOLD-plus-fast-channel does not appear here, no
+regional analysis will rescue it.
 """
 
 from __future__ import annotations
@@ -51,14 +59,29 @@ from vpjax.validation.statespace_recovery import (
     baseline_state,
 )
 
-PARAM_NAMES = ("kappa", "tau", "tau_z", "q_z", "gain", "tau_n", "q_n", "r_eeg", "r_bold")
-ONE_STATE_NAMES = ("kappa", "tau", "tau_z", "q_z", "gain", "r_eeg", "r_bold")
-BOLD_ONLY_NAMES = ("kappa", "tau", "tau_z", "q_z", "r_bold")
-N = 5   # index of the EEG nuisance state, after the five drive+Balloon states
+CORE_NAMES = ("kappa", "tau", "tau_z", "q_z")
+N_CORE = 5   # drive + four Balloon states
+
+
+def param_names(channels: tuple[str, ...] = (), nuisance: bool = True) -> tuple[str, ...]:
+    """Free-parameter names for a model with these auxiliary *channels*."""
+    names = list(CORE_NAMES)
+    for c in channels:
+        names.append(f"gain_{c}")
+        if nuisance:
+            names += [f"tau_n_{c}", f"q_n_{c}"]
+        names.append(f"r_{c}")
+    names.append("r_bold")
+    return tuple(names)
+
+
+PARAM_NAMES = param_names(("eeg",), nuisance=True)
+ONE_STATE_NAMES = param_names(("eeg",), nuisance=False)
+BOLD_ONLY_NAMES = param_names(())
 
 
 # ---------------------------------------------------------------------------
-# Preparing the two series
+# Preparing the series
 # ---------------------------------------------------------------------------
 
 def bold_fractional(ts: np.ndarray, drop: int = 0) -> np.ndarray:
@@ -76,38 +99,51 @@ def bold_fractional(ts: np.ndarray, drop: int = 0) -> np.ndarray:
 
 
 def standardise_envelope(
-    env: np.ndarray, t_env: np.ndarray, t0: float, t1: float, log: bool = True
+    env: np.ndarray,
+    t_env: np.ndarray,
+    t0: float,
+    t1: float,
+    log: bool = True,
+    valid: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Restrict an envelope to ``[t0, t1]`` and standardise it to unit SD.
+    """Restrict a positive series to ``[t0, t1]`` and standardise it to unit SD.
 
-    The log is taken by default: an amplitude envelope is positive and
-    right-skewed, and its log is the quantity whose fluctuations are
-    closest to Gaussian, which is what a Kalman observation assumes.
+    The log is taken by default: an amplitude envelope (or a pupil area)
+    is positive and right-skewed, and its log is the quantity whose
+    fluctuations are closest to Gaussian, which is what a Kalman
+    observation assumes.  Samples flagged invalid, or non-positive, are
+    dropped rather than filled.
     """
-    keep = (t_env >= t0) & (t_env <= t1)
-    x = np.asarray(env, dtype=float)[keep]
+    t_env = np.asarray(t_env, dtype=float)
+    x = np.asarray(env, dtype=float)
+    keep = (t_env >= t0) & (t_env <= t1) & np.isfinite(x)
+    if valid is not None:
+        keep &= np.asarray(valid, dtype=bool)
     if log:
-        x = np.log(np.maximum(x, 1e-12 * np.max(x)))
+        keep &= x > 0
+    x = x[keep]
+    if log:
+        x = np.log(x)
     x = (x - x.mean()) / x.std()
-    return np.asarray(t_env)[keep], x
+    return t_env[keep], x
 
 
 def run_grid(
     t_bold: np.ndarray,
     bold: np.ndarray,
-    t_env: np.ndarray | None = None,
-    env: np.ndarray | None = None,
+    aux: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
     max_dt: float = 0.25,
 ) -> ObservationGrid:
     """Observation grid for one run; noise SDs are placeholders.
 
-    The grid carries unit noise variances, which the model overrides:
-    :func:`run_model` puts ``r_diag`` in its spec, so the values stored
-    here are never read by the fit.
+    *aux* maps a channel name to ``(time_s, values)``.  The grid carries
+    unit noise variances, which the model overrides: :func:`run_model`
+    puts ``r_diag`` in its spec, so the values stored here are never
+    read by the fit.
     """
     streams = {"bold": {"time_s": t_bold, "values": bold, "noise_sd": 1.0}}
-    if env is not None:
-        streams["eeg"] = {"time_s": t_env, "values": env, "noise_sd": 1.0}
+    for name, (t, v) in (aux or {}).items():
+        streams[name] = {"time_s": t, "values": v, "noise_sd": 1.0}
     return build_observation_grid(streams, max_dt=max_dt)
 
 
@@ -119,60 +155,57 @@ def run_model(
     grid: ObservationGrid,
     fit_names: tuple[str, ...],
     fixed: dict[str, float],
-    sign: float = -1.0,
+    sign: float | dict[str, float] = 1.0,
     nuisance: bool = True,
     balloon: BalloonParams | None = None,
     jitter: float = 1e-8,
 ):
     """``build(theta)`` for a recorded run.
 
-    *fit_names* are free (log scale); *fixed* supplies the rest.  ``gamma``,
-    ``alpha`` and ``E0`` come from *balloon* and are never free, for the
-    reason given in :mod:`vpjax.validation.statespace_recovery`.  With
-    *nuisance* the state is six-dimensional: the EEG observation is
-    ``gain * z + n`` where ``n`` is an OU process with time constant
-    ``tau_n`` and diffusion ``q_n`` that enters no other equation.
+    *fit_names* are free (log scale); *fixed* supplies the rest.  *sign*
+    is the loading sign per auxiliary channel (a scalar applies to all).
+    ``gamma``, ``alpha`` and ``E0`` come from *balloon* and are never
+    free, for the reason given in
+    :mod:`vpjax.validation.statespace_recovery`.
     """
     bp = BalloonParams() if balloon is None else balloon
-    has_eeg = "eeg" in grid.channels
-    nuisance = nuisance and has_eeg
-    if has_eeg and "gain" not in fit_names and "gain" not in fixed:
-        raise ValueError("an EEG channel needs a gain, free or fixed")
-    needed = PARAM_NAMES if nuisance else (ONE_STATE_NAMES if has_eeg else BOLD_ONLY_NAMES)
+    channels = tuple(c for c in grid.channels if c != "bold")
+    nuisance = nuisance and bool(channels)
+    needed = param_names(channels, nuisance)
     missing = [n for n in needed if n not in fit_names and n not in fixed]
     if missing:
         raise ValueError(f"neither free nor fixed: {missing}")
-    d = 6 if nuisance else 5
+    signs = {c: float(sign) for c in channels} if np.isscalar(sign) else dict(sign)
     free = {n: i for i, n in enumerate(fit_names)}
     cols = {name: i for i, name in enumerate(grid.channels)}
+    d = N_CORE + (len(channels) if nuisance else 0)
+    nidx = {c: N_CORE + i for i, c in enumerate(channels)}
     full_h = augmented_observation()
 
     def build(theta):
         def get(name):
             return theta[free[name]] if name in free else fixed[name]
 
-        kappa, tau, tau_z, q_z = (get(n) for n in ("kappa", "tau", "tau_z", "q_z"))
+        kappa, tau, tau_z, q_z = (get(n) for n in CORE_NAMES)
         r = jnp.zeros(len(grid.channels)).at[cols["bold"]].set(get("r_bold"))
-        if has_eeg:
-            gain = sign * get("gain")
-            r = r.at[cols["eeg"]].set(get("r_eeg"))
-        if nuisance:
-            tau_n, q_n = get("tau_n"), get("q_n")
-
+        gains = {c: signs[c] * get(f"gain_{c}") for c in channels}
+        for c in channels:
+            r = r.at[cols[c]].set(get(f"r_{c}"))
         core = augmented_drift(kappa, tau, tau_z, bp.gamma, bp.alpha, bp.E0)
 
         def f(t, x, args):
-            dx = core(t, x[:5], args)
+            dx = core(t, x[:N_CORE], args)
             if nuisance:
-                dx = jnp.concatenate([dx, jnp.array([-x[N] / tau_n])])
+                dn = jnp.stack([-x[nidx[c]] / get(f"tau_n_{c}") for c in channels])
+                dx = jnp.concatenate([dx, dn])
             return dx
 
         def h(t, x, args):
-            both = full_h(t, x[:5], args)
+            both = full_h(t, x[:N_CORE], args)
             out = jnp.zeros(len(grid.channels)).at[cols["bold"]].set(both[1])
-            if has_eeg:
-                eeg = gain * x[Z] + (x[N] if nuisance else 0.0)
-                out = out.at[cols["eeg"]].set(eeg)
+            for c in channels:
+                y = gains[c] * x[Z] + (x[nidx[c]] if nuisance else 0.0)
+                out = out.at[cols[c]].set(y)
             return out
 
         Qm = jnp.zeros((d, d)).at[Z, Z].set(q_z) + jitter * jnp.eye(d)
@@ -182,9 +215,11 @@ def run_model(
         diag = [q_z * tau_z / 2.0, 0.1, 0.1, 0.01, 0.01]
         m0 = baseline_state()
         if nuisance:
-            Qm = Qm.at[N, N].set(q_n)
-            diag.append(q_n * tau_n / 2.0)
-            m0 = jnp.concatenate([m0, jnp.zeros(1)])
+            for c in channels:
+                tau_n, q_n = get(f"tau_n_{c}"), get(f"q_n_{c}")
+                Qm = Qm.at[nidx[c], nidx[c]].set(q_n)
+                diag.append(q_n * tau_n / 2.0)
+            m0 = jnp.concatenate([m0, jnp.zeros(len(channels))])
         return {
             "f": f,
             "h": h,
@@ -198,7 +233,9 @@ def run_model(
 
 
 def default_init(
-    bold: np.ndarray, has_eeg: bool, nuisance: bool = True,
+    bold: np.ndarray,
+    channels: tuple[str, ...] | bool = (),
+    nuisance: bool = True,
     balloon: BalloonParams | None = None,
 ) -> dict:
     """Starting values that are scaled to the run, not to any dataset.
@@ -206,7 +243,12 @@ def default_init(
     ``q_z`` is set so the drive's stationary SD roughly reproduces the
     observed BOLD SD through the Balloon's unit-gain steady state; the
     noise variances start at half the observed variance of each series.
+    *channels* may be ``True`` as shorthand for a single ``"eeg"`` channel.
     """
+    if channels is True:
+        channels = ("eeg",)
+    elif channels is False:
+        channels = ()
     bp = BalloonParams() if balloon is None else balloon
     bold_var = float(np.var(bold))
     tau_z = 2.0
@@ -217,15 +259,16 @@ def default_init(
         "q_z": 2.0 * bold_var / 1e-3 / tau_z,
         "r_bold": 0.5 * bold_var,
     }
-    if has_eeg:
-        init["gain"] = 1.0 / np.sqrt(init["q_z"] * tau_z / 2.0)
-        init["r_eeg"] = 0.5
-    if has_eeg and nuisance:
-        # The envelope is standardised, so split its unit variance evenly
-        # between the fast nuisance state and observation noise; the shared
-        # drive's share is what the BOLD will argue for.
-        tau_n = 0.3
-        init.update({"tau_n": tau_n, "q_n": 2.0 * 0.4 / tau_n, "r_eeg": 0.3})
+    for c in channels:
+        init[f"gain_{c}"] = 1.0 / np.sqrt(init["q_z"] * tau_z / 2.0)
+        if nuisance:
+            # The channel is standardised, so split its unit variance
+            # between a fast nuisance state and observation noise; the
+            # shared drive's share is what the BOLD will argue for.
+            tau_n = 0.3
+            init.update({f"tau_n_{c}": tau_n, f"q_n_{c}": 2.0 * 0.4 / tau_n, f"r_{c}": 0.3})
+        else:
+            init[f"r_{c}"] = 0.5
     return init
 
 
@@ -233,12 +276,17 @@ def default_init(
 # Fitting
 # ---------------------------------------------------------------------------
 
+def _sign_key(signs: dict[str, float]) -> str:
+    return ",".join(f"{c}:{s:+.0f}" for c, s in signs.items()) or "none"
+
+
 def fit_run(
     t_bold: np.ndarray,
     bold: np.ndarray,
     t_env: np.ndarray | None = None,
     env: np.ndarray | None = None,
-    sign: float | None = None,
+    aux: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
+    sign: float | dict[str, float] | None = None,
     nuisance: bool = True,
     init: dict | None = None,
     fixed: dict | None = None,
@@ -247,51 +295,72 @@ def fit_run(
     max_steps: int = 300,
     seed: int = 1,
 ) -> dict:
-    """Fit one run; with an envelope, try both loading signs unless given.
+    """Fit one run with any set of auxiliary channels.
+
+    ``t_env, env`` is shorthand for ``aux={"eeg": (t_env, env)}``.  With
+    *sign* unspecified the loading signs are chosen greedily: all start
+    positive, then each channel's sign is flipped in turn and the flip
+    kept if the likelihood improves — ``k + 1`` fits for *k* channels
+    rather than ``2**k``.  For one channel this is exactly both signs.
 
     Returns the same keys as ``statespace_recovery.fit_simulation`` less
-    the truth-dependent ones, plus ``sign`` and, when both signs were
-    tried, ``log_likelihood_by_sign``.
+    the truth-dependent ones, plus ``sign`` (per channel) and
+    ``log_likelihood_by_sign``.
     """
-    has_eeg = env is not None
-    nuisance = nuisance and has_eeg
-    grid = run_grid(t_bold, bold, t_env, env, max_dt=max_dt)
+    aux = dict(aux or {})
+    if env is not None:
+        aux["eeg"] = (t_env, env)
+    channels = tuple(aux)
+    nuisance = nuisance and bool(channels)
+    grid = run_grid(t_bold, bold, aux, max_dt=max_dt)
     fixed = {} if fixed is None else dict(fixed)
-    all_names = PARAM_NAMES if nuisance else (ONE_STATE_NAMES if has_eeg else BOLD_ONLY_NAMES)
-    names = tuple(n for n in all_names if n not in fixed)
-    init = default_init(bold, has_eeg, nuisance) if init is None else dict(init)
+    names = tuple(n for n in param_names(channels, nuisance) if n not in fixed)
+    init = default_init(bold, channels, nuisance) if init is None else dict(init)
     init_vec = jnp.array([init[n] for n in names])
 
-    signs = (sign,) if sign is not None else ((-1.0, 1.0) if has_eeg else (1.0,))
-    fits = {}
-    for s in signs:
-        build = run_model(grid, names, fixed, sign=s, nuisance=nuisance)
+    def one(signs):
+        build = run_model(grid, names, fixed, sign=signs, nuisance=nuisance)
         fit = fit_statespace(
             build, grid, init=init_vec, max_steps=max_steps,
             restarts=restarts, seed=seed,
         )
-        fits[s] = (build, fit)
-    best = max(fits, key=lambda s: float(fits[s][1]["log_likelihood"]))
-    build, fit = fits[best]
+        return build, fit
+
+    tried = {}
+    if sign is None:
+        signs = {c: 1.0 for c in channels}
+    else:
+        signs = {c: float(sign) for c in channels} if np.isscalar(sign) else dict(sign)
+    best = (signs, *one(signs))
+    tried[_sign_key(signs)] = float(best[2]["log_likelihood"])
+    if sign is None:
+        for c in channels:
+            trial = dict(best[0]); trial[c] = -trial[c]
+            cand = (trial, *one(trial))
+            tried[_sign_key(trial)] = float(cand[2]["log_likelihood"])
+            if float(cand[2]["log_likelihood"]) > float(best[2]["log_likelihood"]):
+                best = cand
+    signs, build, fit = best
     unc = parameter_uncertainty(build, grid, fit["log_theta"])
 
     return {
         "fit_names": names,
+        "channels": grid.channels,
         "nuisance": nuisance,
-        "sign": best,
-        "log_likelihood_by_sign": {
-            str(s): float(f["log_likelihood"]) for s, (_, f) in fits.items()
-        },
+        "sign": dict(signs),
+        "log_likelihood_by_sign": tried,
         "estimate": {n: float(v) for n, v in zip(names, fit["theta"])},
         "initial": {n: init[n] for n in names},
         "fixed": fixed,
         "log_likelihood": float(fit["log_likelihood"]),
         "n_obs": float(fit["n_obs"]),
+        "n_present": {
+            c: int(np.asarray(grid.mask)[:, i].sum()) for i, c in enumerate(grid.channels)
+        },
         "success": bool(fit["success"]),
         "diagnostics": _flatten_diagnostics(
             residual_diagnostics(fit["filter"], channels=grid.channels)
         ),
-        "channels": grid.channels,
         "log_likelihood_by_start": [float(v) for v in fit["all_log_likelihoods"]],
         "identifiable": bool(unc["identifiable"]),
         "positive_definite": bool(unc["positive_definite"]),
@@ -304,17 +373,18 @@ def fit_run(
 
 def format_run(label: str, r: dict) -> str:
     """One arm of a run, as text."""
+    signs = " ".join(f"{c}{s:+.0f}" for c, s in r["sign"].items()) or "none"
     lines = [f"{label}: log-lik {r['log_likelihood']:.1f} over {r['n_obs']:.0f} obs, "
-             f"converged={r['success']}, sign={r['sign']:+.0f}"]
+             f"converged={r['success']}, signs {signs}"]
     if len(r["log_likelihood_by_sign"]) > 1:
         lines.append("  by sign: " + ", ".join(
             f"{k}: {v:.1f}" for k, v in r["log_likelihood_by_sign"].items()))
     for n in r["fit_names"]:
         se = r["standard_error"][n]
-        lines.append(f"  {n:<7} {r['estimate'][n]:>11.4g}   rel SE "
+        lines.append(f"  {n:<10} {r['estimate'][n]:>11.4g}   rel SE "
                      + (f"{se:.3f}" if np.isfinite(se) else "inf"))
     for name, d in r["diagnostics"]["per_channel"].items():
-        lines.append(f"  innovations {name:<5} n={d['n']:>6.0f} variance {d['variance']:.3f} "
+        lines.append(f"  innovations {name:<6} n={d['n']:>6.0f} variance {d['variance']:.3f} "
                      f"lag-1 {d['lag1']:+.3f}")
     lines.append(f"  identifiable={r['identifiable']} curvature ratio={r['curvature_ratio']:+.3g} "
                  f"positive definite={r['positive_definite']}")

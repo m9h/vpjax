@@ -40,21 +40,47 @@ def load_brainvision(vhdr_path: str | Path, trigger: str = "R128") -> dict:
 
     Returns ``data`` (channels, samples) in volts, ``fs``, ``ch_names``
     and ``triggers`` (sample indices of the volume marker).
+
+    Some BIDS exports (NATVIEW, for one) ship the BrainVision header and
+    marker files but hold the samples in an EEGLAB ``.set`` next to them;
+    when the ``.eeg`` binary is missing, the ``.set`` is read instead and
+    the triggers are taken from the ``.vmrk``.
     """
     import mne
 
-    raw = mne.io.read_raw_brainvision(str(vhdr_path), preload=True, verbose=False)
-    events, ids = mne.events_from_annotations(raw, verbose=False)
-    key = next((k for k in ids if trigger in k), None)
-    if key is None:
-        raise ValueError(f"no {trigger!r} marker in {vhdr_path}; found {sorted(ids)}")
-    triggers = events[events[:, 2] == ids[key], 0] - raw.first_samp
+    vhdr_path = Path(vhdr_path)
+    set_path = vhdr_path.with_suffix(".set")
+    try:
+        raw = mne.io.read_raw_brainvision(str(vhdr_path), preload=True, verbose=False)
+        events, ids = mne.events_from_annotations(raw, verbose=False)
+        key = next((k for k in ids if trigger in k), None)
+        if key is None:
+            raise ValueError(f"no {trigger!r} marker in {vhdr_path}; found {sorted(ids)}")
+        triggers = events[events[:, 2] == ids[key], 0] - raw.first_samp
+    except FileNotFoundError:
+        if not set_path.exists():
+            raise
+        raw = mne.io.read_raw_eeglab(str(set_path), preload=True, verbose=False)
+        triggers = _vmrk_triggers(vhdr_path.with_suffix(".vmrk"), trigger)
     return {
         "data": raw.get_data(),
         "fs": float(raw.info["sfreq"]),
         "ch_names": list(raw.ch_names),
         "triggers": np.asarray(triggers, dtype=int),
     }
+
+
+def _vmrk_triggers(vmrk_path: Path, trigger: str) -> np.ndarray:
+    """Sample positions (0-based) of a marker in a BrainVision ``.vmrk``."""
+    out = []
+    for line in open(vmrk_path, encoding="utf-8", errors="replace"):
+        if line.startswith("Mk") and "=" in line:
+            fields = line.strip().split("=", 1)[1].split(",")
+            if len(fields) >= 3 and fields[1].strip() == trigger:
+                out.append(int(fields[2]) - 1)
+    if not out:
+        raise ValueError(f"no {trigger!r} marker in {vmrk_path}")
+    return np.asarray(out, dtype=int)
 
 
 # ---------------------------------------------------------------------------

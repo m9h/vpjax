@@ -46,9 +46,9 @@ class TestPreparation:
 
     def test_grid_noise_placeholders_are_overridden(self, run):
         sim, env = run
-        grid = run_grid(sim["t_bold"], sim["bold"], sim["t_eeg"], env)
+        grid = run_grid(sim["t_bold"], sim["bold"], {"eeg": (sim["t_eeg"], env)})
         assert set(grid.channels) == {"bold", "eeg"}
-        init = default_init(sim["bold"], True)
+        init = default_init(sim["bold"], ("eeg",))
         build = run_model(grid, PARAM_NAMES, {}, nuisance=True)
         spec = build(np.array([init[n] for n in PARAM_NAMES]))
         assert "r_diag" in spec and spec["Q"].shape == (6, 6)
@@ -58,8 +58,8 @@ class TestPreparation:
 class TestModelShapes:
     def test_one_state_model_is_five_dimensional(self, run):
         sim, env = run
-        grid = run_grid(sim["t_bold"], sim["bold"], sim["t_eeg"], env)
-        init = default_init(sim["bold"], True, nuisance=False)
+        grid = run_grid(sim["t_bold"], sim["bold"], {"eeg": (sim["t_eeg"], env)})
+        init = default_init(sim["bold"], ("eeg",), nuisance=False)
         build = run_model(grid, ONE_STATE_NAMES, {}, nuisance=False)
         spec = build(np.array([init[n] for n in ONE_STATE_NAMES]))
         assert spec["Q"].shape == (5, 5)
@@ -67,16 +67,16 @@ class TestModelShapes:
     def test_bold_only_has_no_eeg_parameters(self, run):
         sim, _ = run
         grid = run_grid(sim["t_bold"], sim["bold"])
-        init = default_init(sim["bold"], False)
-        assert "gain" not in init and "tau_n" not in init
+        init = default_init(sim["bold"], ())
+        assert not any(k.startswith(("gain_", "tau_n_")) for k in init)
         build = run_model(grid, BOLD_ONLY_NAMES, {})
         spec = build(np.array([init[n] for n in BOLD_ONLY_NAMES]))
         assert spec["r_diag"].shape == (1,)
 
     def test_missing_parameter_is_an_error(self, run):
         sim, env = run
-        grid = run_grid(sim["t_bold"], sim["bold"], sim["t_eeg"], env)
-        with pytest.raises(ValueError, match="needs a gain|neither free nor fixed"):
+        grid = run_grid(sim["t_bold"], sim["bold"], {"eeg": (sim["t_eeg"], env)})
+        with pytest.raises(ValueError, match="neither free nor fixed"):
             run_model(grid, ("kappa", "tau"), {})
 
     def test_fixed_parameters_are_used(self, run):
@@ -94,7 +94,7 @@ class TestFit:
         sim, _ = run
         r = fit_run(sim["t_bold"], sim["bold"], restarts=0, max_steps=5)
         assert r["fit_names"] == BOLD_ONLY_NAMES
-        assert r["nuisance"] is False and r["sign"] == 1.0
+        assert r["nuisance"] is False and r["sign"] == {}
         assert set(r["standard_error"]) == set(BOLD_ONLY_NAMES)
         assert "bold" in r["diagnostics"]["per_channel"]
         assert isinstance(format_run("x", r), str)
@@ -104,8 +104,8 @@ class TestFit:
         t, x = standardise_envelope(env, sim["t_eeg"], 0.0, 120.0)
         r = fit_run(sim["t_bold"], sim["bold"], t, x, restarts=0, max_steps=5)
         assert r["nuisance"] is True
-        assert set(r["log_likelihood_by_sign"]) == {"-1.0", "1.0"}
-        assert r["sign"] in (-1.0, 1.0)
+        assert set(r["log_likelihood_by_sign"]) == {"eeg:+1", "eeg:-1"}
+        assert r["sign"]["eeg"] in (-1.0, 1.0)
         assert set(r["fit_names"]) == set(PARAM_NAMES)
         assert {"bold", "eeg"} <= set(r["diagnostics"]["per_channel"])
 
@@ -123,6 +123,6 @@ class TestFit:
         t, x = standardise_envelope(env, sim["t_eeg"], 0.0, 360.0)
         r = fit_run(sim["t_bold"], sim["bold"], t, x, restarts=2, max_steps=150)
         # The envelope was built with a positive loading on the drive.
-        assert r["sign"] == 1.0
-        assert r["log_likelihood_by_sign"]["1.0"] > r["log_likelihood_by_sign"]["-1.0"] + 10
+        assert r["sign"]["eeg"] == 1.0
+        assert r["log_likelihood_by_sign"]["eeg:+1"] > r["log_likelihood_by_sign"]["eeg:-1"] + 10
         assert abs(r["diagnostics"]["per_channel"]["eeg"]["variance"] - 1.0) < 0.3

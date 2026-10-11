@@ -34,6 +34,9 @@ def main():
     p.add_argument("--task", default="rest")
     p.add_argument("--run", default="1")
     p.add_argument("--eeg-cache", help="npz from a previous cleaning pass (t_env, envelope, t_volumes)")
+    p.add_argument("--roi-file", help="npz from scripts/ds003768_rois.py")
+    p.add_argument("--roi", default="global",
+                   help="which BOLD series to use from --roi-file (global, visual, motor)")
     p.add_argument("--drop", type=int, default=0, help="initial volumes to drop")
     p.add_argument("--restarts", type=int, default=8)
     p.add_argument("--max-dt", type=float, default=0.25)
@@ -49,7 +52,11 @@ def main():
     bold_path = root / f"sub-{a.subject}" / "func" / f"{stem}_bold.nii.gz"
     vhdr_path = root / f"sub-{a.subject}" / "eeg" / f"{stem}_eeg.vhdr"
 
-    ts, tr = load_bold_global(bold_path)
+    if a.roi_file:
+        d = np.load(a.roi_file)
+        ts, tr = d[f"bold_{a.roi}"], float(d["tr"])
+    else:
+        ts, tr = load_bold_global(bold_path)
     bold = bold_fractional(ts, drop=a.drop)
 
     if a.eeg_cache:
@@ -67,7 +74,7 @@ def main():
     t_bold = t_vol[a.drop:] + tr / 2.0
     t_env, env = standardise_envelope(env_all, t_env_all, t_bold[0] - tr / 2, t_bold[-1] + tr / 2)
 
-    print(f"{stem}: {bold.size} volumes at TR {tr} s, BOLD fractional SD {bold.std():.4f}; "
+    print(f"{stem} [{a.roi}]: {bold.size} volumes at TR {tr} s, BOLD fractional SD {bold.std():.4f}; "
           f"{env.size} envelope samples")
     for k, v in cleaning.items():
         print(f"  {k}: " + ", ".join(f"{kk}={vv:.3g}" if isinstance(vv, float) else f"{kk}={vv}"
@@ -80,7 +87,7 @@ def main():
     print(format_run("BOLD+EEG", both))
 
     if a.output:
-        json.dump({"run": stem, "tr": tr, "cleaning": cleaning,
+        json.dump({"run": stem, "roi": a.roi, "tr": tr, "cleaning": cleaning,
                    "bold_only": bold_only, "both": both},
                   open(a.output, "w"), indent=1, default=float)
         print(f"wrote {a.output}")

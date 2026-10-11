@@ -17,6 +17,27 @@ All notable changes to vpjax are documented in this file.
 
 ### Added
 
+- `vpjax/validation/natview.py`: loader for the NKI NATVIEW simultaneous
+  EEG-fMRI dataset (Telesford et al. 2023; FCP-INDI, CC BY 4.0) putting
+  EEG, pupil area and respiration-belt streams on one clock through the
+  scanner triggers each of them recorded — a linear fit through the
+  shared trigger trains, refused if the residual exceeds the stream's
+  timestamp quantisation. Pupil is binned with a validity mask (blinks,
+  eye closure) rather than filled; respiration is reduced to a breathing
+  amplitude envelope. `scripts/validate_natview_statespace.py` fits
+  BOLD-only and any combination of the three channels on the same run.
+- `eeg_fmri_statespace` generalised to any number of auxiliary channels
+  (`param_names(channels)`), each with its own loading, nuisance state
+  and noise; loading signs chosen greedily (k+1 fits, not 2^k). Sparse
+  channels enter through the presence mask.
+- `scripts/ds003768_rois.py`: visual-cortex and motor-strip BOLD series
+  in native EPI space via FSL (mean EPI → T1w → MNI, Harvard-Oxford
+  max-prob labels), for regional rather than global pairing with the
+  occipital alpha envelope. `validate_ds003768_statespace.py` takes
+  `--roi-file/--roi`.
+- `eeg_artifacts.load_brainvision` falls back to an EEGLAB `.set` beside
+  the BrainVision header, taking triggers from the `.vmrk`.
+
 - `vpjax/validation/eeg_artifacts.py`: in-scanner EEG cleaning as a
   transparent baseline — gradient average-artifact subtraction locked to
   the volume trigger (Allen et al. 2000), R-peak detection and
