@@ -17,6 +17,22 @@ All notable changes to vpjax are documented in this file.
 
 ### Added
 
+- Vascular input route: `augmented_drift`/`simulate` take `beta_vasc`, an
+  input gain on the flow-inducing signal that bypasses the neural drive
+  (the autonomic confound). Either gain can be fitted on data that did not
+  contain it, as a specificity test; relative error against a zero
+  reference is reported as NaN.
+- `scripts/autonomic_confound_case.py`: matched-amplitude neural vs
+  vascular routes. From BOLD alone the routes differ by < 1 log-likelihood
+  unit and the wrong one is recovered at ~98% with 2ΔLL ≈ 85; with a
+  TR-rate drive channel the route comparison is decisive (+85 / −996).
+  Fitting only the neural route still reports a large gain on
+  autonomic-only data, so routes must be compared.
+- `docs/anxiety_induction_arm.md`: a drug-free sustained-arousal run
+  (Allen 2026 heights film) as the empirical negative control.
+- `docs/data_access_contacts.md`: custodians and verified contacts for the
+  public psychedelic neuroimaging datasets.
+
 - `scripts/noise_confound_case.py`: a specificity test for drug studies.
   A drug that only triples the BOLD observation noise in the acute window
   produces no drug effect on the drive (fitted gain 0.00000, likelihood

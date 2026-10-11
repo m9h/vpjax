@@ -478,6 +478,61 @@ use. And the null rows are correctly *not* identifiable: with no effect
 present the gain is unconstrained, and the diagnostic says so rather
 than returning a confident zero.
 
+### Can an autonomic response fake a neural drug effect?
+
+The noise result does not cover the harder case. A real drug raises
+heart rate, blood pressure and breathing, and those move perfusion
+*through the vasculature* -- smoothly, on the drug's own time scale, and
+through the same Balloon low-pass the drive uses. Nothing about the
+filter separates the two.
+
+`augmented_drift` now takes the input by either route: `beta` drives the
+neural state `z` (which the EEG observes), `beta_vasc` drives the
+flow-inducing signal `s` directly and leaves `z` alone. The vascular
+gain is calibrated so both routes give the same BOLD excursion -- an
+unmatched confound is distinguishable by size alone. Each dataset is
+fitted with each route, with and without the drive channel
+(`scripts/autonomic_confound_case.py`, 15-minute run, TR 2 s, drive
+channel at TR rate, 3 seeds):
+
+| data | channels | route fitted | gain, % of true | 2ΔLL vs 0 | route ΔLL |
+|---|---|---|---|---|---|
+| neural | BOLD+EEG | neural | 99.6% | 169.5 | **+84.8** |
+| neural | BOLD+EEG | vascular | 0.3% | 0.3 | |
+| neural | BOLD only | neural | 157% | 87.7 | **−0.25** |
+| neural | BOLD only | vascular | **98.5%** | 88.7 | |
+| vascular | BOLD+EEG | neural | (4564%) | 607.6 | **−995.6** |
+| vascular | BOLD+EEG | vascular | 100.0% | 2617.6 | |
+| vascular | BOLD only | neural | 164% | 84.5 | **−0.86** |
+| vascular | BOLD only | vascular | **98.4%** | 87.6 | |
+
+(BOLD-only likelihood ratios are over 2 of 3 seeds: one nested fit
+diverged and has no likelihood.)
+
+**From BOLD alone the two routes differ by under one log-likelihood
+unit**, and the wrong route is reported at ~98% of the true amplitude
+with a likelihood ratio near 85 -- a highly significant effect on
+whichever system the analyst wrote down. A purely neural effect is
+confidently attributed to the circulation, and vice versa. With a
+drive channel the comparison is decisive in both directions (+85 and
+−996).
+
+The caveat that sets the analysis recipe: with the EEG present, fitting
+*only* the neural route to autonomic-only data still returns a large,
+"significant" gain (2ΔLL = 608). What the EEG buys is the ability to
+*compare routes*, not a gain that goes to zero. Fit both routes and
+compare; a single route tested against zero is a false-positive machine
+even with simultaneous EEG.
+
+The amplitude here is the established configuration (several percent
+BOLD), so this shows the routes are separable in principle; the
+drive-channel SNR sweep in the same script is where the recording
+requirement lives. The empirical negative control is a drug-free
+sustained arousal run in the placebo session -- see
+`docs/anxiety_induction_arm.md` -- and the public dataset with all three
+channels (BOLD, EEG, EKG on a synced clock) is the Imperial DMT study;
+see `docs/data_access_contacts.md`.
+
 ### A dataset this cannot be run on
 
 Worth recording, since it is the common case. The public release that

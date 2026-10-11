@@ -301,3 +301,80 @@ class TestDrugInput:
         assert r["identifiable"]
         assert r["standard_error"]["beta"] < 0.2
         assert r["relative_error"]["beta"] < 3 * r["standard_error"]["beta"]
+
+
+class TestVascularRoute:
+    """An input can reach the BOLD without touching the neural drive.
+
+    This is the autonomic confound: a drug raises heart rate, blood
+    pressure and breathing, perfusion follows, and the BOLD moves with
+    no change in neural activity at all.  See
+    ``scripts/autonomic_confound_case.py``.
+    """
+
+    def test_vascular_input_moves_bold_but_not_the_drive(self):
+        from vpjax.validation.statespace_recovery import (
+            drug_shaped_input, simulate,
+        )
+        u = drug_shaped_input(30.0, 15.0, 60.0)
+        kw = dict(duration=240.0, drive_input=u, bold_sd=0.0, q_z=1e-12, seed=0)
+        vasc = simulate(beta_vasc=0.5, **kw)
+        neural = simulate(beta=0.5, **kw)
+        # The drive is untouched on the vascular route, and driven on the
+        # neural one; both move the BOLD.
+        assert np.ptp(vasc["x"][:, 0]) < 1e-3
+        assert np.ptp(neural["x"][:, 0]) > 0.5
+        assert np.ptp(vasc["bold"]) > 0.01
+        assert np.ptp(neural["bold"]) > 0.01
+
+    def test_gain_is_exposed_only_where_it_acted(self):
+        from vpjax.validation.statespace_recovery import (
+            default_fit_names, drug_shaped_input, simulate,
+        )
+        u = drug_shaped_input(30.0, 15.0, 60.0)
+        kw = dict(duration=120.0, drive_input=u, seed=0)
+        assert default_fit_names(simulate(beta_vasc=0.4, **kw))[-1] == "beta_vasc"
+        assert default_fit_names(simulate(beta=0.4, **kw))[-1] == "beta"
+        both = default_fit_names(simulate(beta=0.4, beta_vasc=0.4, **kw))
+        assert both[-2:] == ("beta", "beta_vasc")
+        assert "beta_vasc" not in default_fit_names(simulate(beta=0.4, **kw))
+
+    def test_vascular_gain_needs_an_input(self):
+        from vpjax.validation.statespace_recovery import (
+            _build_model, make_grid, simulate,
+        )
+        sim = simulate(duration=60.0, seed=0)
+        with pytest.raises(ValueError, match="only estimable"):
+            _build_model(make_grid(sim), sim, ("kappa", "beta_vasc"))
+
+    def test_matched_gains_give_the_same_bold_excursion(self):
+        import importlib.util
+        import pathlib
+        from vpjax.validation.statespace_recovery import drug_shaped_input
+
+        path = pathlib.Path(__file__).parents[2] / "scripts" / "autonomic_confound_case.py"
+        spec = importlib.util.spec_from_file_location("autonomic_case", path)
+        case = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(case)
+
+        shape = dict(duration=240.0, tr=2.0, eeg_dt=2.0,
+                     drive_input=drug_shaped_input(30.0, 15.0, 60.0))
+        matched = case.match_vascular_gain(0.5, **shape)
+        # An unmatched confound would be distinguishable by size alone,
+        # so the matching is what makes the test a test.
+        assert matched != pytest.approx(0.5, rel=0.01)
+        assert case.peak_bold(beta_vasc=matched, **shape) == pytest.approx(
+            case.peak_bold(beta=0.5, **shape), rel=2e-3
+        )
+
+    def test_relative_error_is_undefined_against_a_zero_reference(self):
+        from vpjax.validation.statespace_recovery import (
+            drug_shaped_input, fit_simulation, simulate,
+        )
+        u = drug_shaped_input(10.0, 5.0, 20.0)
+        sim = simulate(duration=60.0, drive_input=u, beta=0.3, seed=0)
+        sim = dict(sim, truth=dict(sim["truth"], beta=0.0))
+        r = fit_simulation(sim, restarts=0, max_steps=3,
+                           fit_names=("kappa", "beta"))
+        assert np.isnan(r["relative_error"]["beta"])
+        assert np.isfinite(r["estimate"]["beta"])

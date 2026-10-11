@@ -112,13 +112,27 @@ def augmented_drift(
     alpha: Float[Array, ""],
     E0: Float[Array, ""],
     beta: Float[Array, ""] = 0.0,
+    beta_vasc: Float[Array, ""] = 0.0,
 ):
     """Build ``f(t, x, args)`` for the drive-plus-Balloon system.
 
-    ``beta`` is the gain on an exogenous input ``u(t)`` -- a drug
-    effect-site or occupancy time course, for instance.  The input
-    arrives through ``args`` as ``(static_args, u_k)``, which is the
-    convention :func:`vpjax.statespace.ll_filter` uses for its
+    An exogenous input ``u(t)`` can arrive by either of two routes, and
+    which route it takes is the whole point of this signature.
+
+    ``beta`` is its gain on the *neural* drive ``z``: the input changes
+    the firing that the vasculature then responds to, and so must also
+    appear in anything that observes ``z`` (the EEG channel).
+
+    ``beta_vasc`` is its gain on the flow-inducing signal ``s``
+    directly: the input changes perfusion without changing the drive.
+    This is the systemic/autonomic route -- a heart-rate, blood-pressure
+    or end-tidal CO2 change -- and it is deliberately injected at the
+    same place the drive enters, so it passes through the identical
+    Balloon low-pass and is as confusable with a neural effect as the
+    model permits.  Nothing weaker would be a fair test.
+
+    The input arrives through ``args`` as ``(static_args, u_k)``, which
+    is the convention :func:`vpjax.statespace.ll_filter` uses for its
     ``inputs`` argument; with plain ``args`` there is no input.
     """
 
@@ -134,7 +148,7 @@ def augmented_drift(
 
         return jnp.array([
             -z / tau_z + beta * u,
-            z - kappa * s - gamma * (f - 1.0),
+            z - kappa * s - gamma * (f - 1.0) + beta_vasc * u,
             s,
             (f - fout) / tau,
             (f * extraction / E0 - fout * q / v) / tau,
@@ -207,6 +221,7 @@ def simulate(
     seed: int = 0,
     drive_input=None,
     beta: float = 0.0,
+    beta_vasc: float = 0.0,
 ) -> dict:
     """Simulate a resting EEG-fMRI run from the augmented model.
 
@@ -241,9 +256,14 @@ def simulate(
                e.g. :func:`drug_shaped_input`.  Enters the drive as
                ``beta * u(t)``.  With no input the run is stationary
                resting state.
-    beta     : gain on ``drive_input``, in the drive's units.  Only
-               meaningful with an input; recorded in ``truth`` and
-               estimated by :func:`fit_simulation` when nonzero.
+    beta     : gain on ``drive_input`` through the *neural* drive, in
+               the drive's units.  Only meaningful with an input;
+               recorded in ``truth`` and estimated by
+               :func:`fit_simulation` when nonzero.
+    beta_vasc : gain on ``drive_input`` through the *vascular* route
+               (straight into the flow-inducing signal), bypassing the
+               drive.  This is how a systemic autonomic response is
+               simulated.  See :func:`augmented_drift`.
 
     Returns
     -------
@@ -257,7 +277,9 @@ def simulate(
     alpha = float(bp.alpha)
     E0 = float(bp.E0)
 
-    drift = augmented_drift(kappa, tau, tau_z, gamma, alpha, E0, beta)
+    drift = augmented_drift(
+        kappa, tau, tau_z, gamma, alpha, E0, beta, beta_vasc
+    )
     observe = augmented_observation(bold_params)
 
     # Stationary SD of the OU drive: Var[z] = q_z tau_z / 2.
@@ -298,6 +320,7 @@ def simulate(
         "truth": {
             "kappa": kappa, "tau": tau, "tau_z": tau_z, "q_z": q_z,
             "gamma": gamma, "alpha": alpha, "E0": E0, "beta": beta,
+            "beta_vasc": beta_vasc,
         },
         "t_fine": t_fine,
         "x": x,
@@ -345,12 +368,22 @@ def make_grid(
 
 
 _FIT_NAMES = ("kappa", "tau", "tau_z", "q_z")
-_INPUT_NAMES = _FIT_NAMES + ("beta",)
+_GAIN_NAMES = ("beta", "beta_vasc")
+_INPUT_NAMES = _FIT_NAMES + _GAIN_NAMES
 
 
 def default_fit_names(sim: dict) -> tuple[str, ...]:
-    """The parameters a simulation exposes: ``beta`` only with an input."""
-    return _INPUT_NAMES if sim["truth"].get("beta", 0.0) != 0.0 else _FIT_NAMES
+    """The parameters a simulation exposes: a gain only where it acted.
+
+    A gain whose true value is zero is left out of the default, because
+    a parameter that did nothing to the data is not something the
+    simulation can be asked to recover.  Fitting such a gain anyway --
+    asking whether an effect that was not there is reported -- is a
+    specificity test, and it is requested explicitly through
+    *fit_names*.
+    """
+    gains = tuple(n for n in _GAIN_NAMES if sim["truth"].get(n, 0.0) != 0.0)
+    return _FIT_NAMES + gains
 
 
 def _build_model(
@@ -378,12 +411,16 @@ def _build_model(
     unknown = set(fit_names) - set(_INPUT_NAMES)
     if unknown:
         raise ValueError(f"cannot fit {sorted(unknown)}; choose from {_INPUT_NAMES}")
-    if "beta" in fit_names and truth.get("beta", 0.0) == 0.0:
-        raise ValueError("beta is only estimable from a simulation with an input")
+    wants_gain = [n for n in _GAIN_NAMES if n in fit_names]
     free = {n: i for i, n in enumerate(fit_names)}
     u_fine = sim.get("u_fine")
+    has_input = u_fine is not None and bool(np.any(u_fine))
+    if wants_gain and not has_input:
+        raise ValueError(
+            f"{wants_gain[0]} is only estimable from a simulation with an input"
+        )
     inputs = (
-        None if u_fine is None or not np.any(u_fine)
+        None if not has_input
         else jnp.asarray(np.interp(np.asarray(grid.t), sim["t_fine"], u_fine))
     )
     has_eeg = "eeg" in grid.channels
@@ -405,7 +442,9 @@ def _build_model(
             return theta[free[name]] if name in free else truth[name]
 
         kappa, tau, tau_z, q_z = (get(n) for n in _FIT_NAMES)
-        beta = get("beta") if "beta" in truth else 0.0
+        beta, beta_vasc = (
+            get(n) if n in free or n in truth else 0.0 for n in _GAIN_NAMES
+        )
         Qm = jnp.zeros((5, 5)).at[Z, Z].set(q_z)
         # A floor on the hemodynamic states' process noise keeps the
         # predicted covariance invertible for the smoother; it is six
@@ -414,7 +453,7 @@ def _build_model(
         spec = {
             "f": augmented_drift(
                 kappa, tau, tau_z,
-                truth["gamma"], truth["alpha"], truth["E0"], beta,
+                truth["gamma"], truth["alpha"], truth["E0"], beta, beta_vasc,
             ),
             "h": h,
             "Q": Qm,
@@ -480,7 +519,8 @@ def fit_simulation(
             "tau": 0.6 * sim["truth"]["tau"],
             "tau_z": 1.7 * sim["truth"]["tau_z"],
             "q_z": 0.5 * sim["truth"]["q_z"],
-            "beta": 0.5 * sim["truth"].get("beta", 1.0),
+            "beta": 0.5 * (sim["truth"].get("beta") or 1.0),
+            "beta_vasc": 0.5 * (sim["truth"].get("beta_vasc") or 1.0),
         }
     init = {n: init[n] for n in fit_names}
     init_vec = jnp.array([init[n] for n in fit_names])
@@ -499,7 +539,13 @@ def fit_simulation(
         "truth": truth,
         "initial": dict(init),
         "relative_error": {
-            n: abs(est[n] - truth[n]) / truth[n] for n in fit_names
+            # A zero reference has no relative error.  This happens only
+            # in a specificity test, where the question is whether the
+            # estimate stays at zero, so the absolute estimate is the
+            # number to read and this entry is left undefined.
+            n: (abs(est[n] - truth[n]) / truth[n] if truth[n] != 0.0
+                else float("nan"))
+            for n in fit_names
         },
         "log_likelihood": float(fit["log_likelihood"]),
         "n_obs": float(fit["n_obs"]),
