@@ -357,7 +357,10 @@ def fit_run(
             trial = dict(best[0]); trial[c] = -trial[c]
             cand = (trial, *one(trial))
             tried[_sign_key(trial)] = float(cand[2]["log_likelihood"])
-            if float(cand[2]["log_likelihood"]) > float(best[2]["log_likelihood"]):
+            ll = float(cand[2]["log_likelihood"])
+            # A NaN here is a fit that blew up for that sign; it is recorded
+            # in log_likelihood_by_sign and never wins.
+            if np.isfinite(ll) and ll > float(best[2]["log_likelihood"]):
                 best = cand
     signs, build, fit = best
     unc = parameter_uncertainty(build, grid, fit["log_theta"])

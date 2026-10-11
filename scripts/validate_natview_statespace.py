@@ -35,11 +35,13 @@ def main():
     p.add_argument("--max-steps", type=int, default=300)
     p.add_argument("--max-dt", type=float, default=0.25)
     p.add_argument("--eeg-dt", type=float, default=0.5, help="envelope sample interval to fit at")
+    p.add_argument("--pupil-dt", type=float, default=0.5, help="pupil bin width (s)")
+    p.add_argument("--resp-dt", type=float, default=1.0, help="respiration envelope bin width (s)")
     p.add_argument("--output")
     a = p.parse_args()
 
     paths = run_paths(a.root, a.subject, a.task)
-    run = load_run(paths, eeg_dt=a.eeg_dt)
+    run = load_run(paths, eeg_dt=a.eeg_dt, eye_dt=a.pupil_dt, resp_dt=a.resp_dt)
     tr, t_vol = run["tr"], run["t_volumes"]
     if a.roi_file:
         d = np.load(a.roi_file)
