@@ -8,6 +8,7 @@ from vpjax.validation.brain_body import (
     A,
     CORE_NAMES,
     DEFAULT_LOOP_GAIN,
+    FIT_CORE,
     TOPOLOGIES,
     Z,
     free_names,
@@ -16,6 +17,7 @@ from vpjax.validation.brain_body import (
     loop_gain,
     nominal,
     observe,
+    simulate,
     topology_identifiability,
     topology_params,
 )
@@ -216,3 +218,85 @@ class TestChannelLoadings:
         assert "gain_fast" not in free_names("measurement", ("fast",))
         assert "gain_hr" in free_names("measurement", ("hr",))
         assert "gain_fast" in free_names("efferent", ("fast",))
+
+
+class TestSimulation:
+    def test_each_channel_is_noised_against_its_own_excursion(self):
+        sim = simulate("efferent", duration=400.0, decay=200.0, snr=3.0, seed=0)
+        for c in ("fast", "bold", "hr"):
+            # Against the *deterministic* excursion, not the realised
+            # one: process noise must not feed back into the noise scale.
+            ptp = float(np.ptp(sim[f"noisefree_{c}"]))
+            assert sim["noise_sd"][c] == pytest.approx(ptp / 3.0, rel=0.05)
+            assert np.ptp(sim[f"latent_{c}"]) >= np.ptp(sim[f"noisefree_{c}"])
+
+    def test_a_channel_the_topology_never_moves_falls_back_to_unit_noise(self):
+        """measurement leaves the drive at rest, so its channel is noise only."""
+        sim = simulate("measurement", duration=400.0, decay=200.0, seed=0)
+        assert float(np.ptp(sim["noisefree_fast"])) < 1e-9
+        assert sim["noise_sd"]["fast"] == 1.0
+        # The realised channel still moves, because the drive has its
+        # own process noise -- it just carries no input-driven signal.
+        assert float(np.ptp(sim["latent_fast"])) > 0.0
+
+    def test_the_same_seed_reproduces_the_run(self):
+        kw = dict(duration=300.0, decay=150.0, seed=7)
+        a_ = simulate("loop", **kw)
+        b_ = simulate("loop", **kw)
+        assert np.allclose(a_["bold"], b_["bold"])
+
+    def test_process_noise_moves_the_drive_without_an_input(self):
+        """q_z alone fluctuates z, which is why tau_z stays informed."""
+        sim = simulate("measurement", duration=400.0, decay=200.0, q_z=0.05, seed=0)
+        assert float(np.std(sim["x"][:, Z])) > 1e-3
+
+
+class TestOmittedGainsAreZero:
+    """The invariant the whole confusion matrix rests on."""
+
+    def test_a_fitted_topology_ignores_a_gain_it_does_not_carry(self):
+        """Fitting 'efferent' to 'loop' data must not use the body-to-brain arm.
+
+        Checked on the drift itself rather than through a fit: with the
+        autonomic state held away from rest, a model that carried
+        ``g_bp`` would show it in ``dz/dt``.  ``efferent`` does not, so
+        that row must be exactly the decay of the drive.
+        """
+        import jax.numpy as jnp
+        from vpjax.validation.brain_body import build_model, make_grid
+
+        sim = simulate("loop", duration=300.0, decay=150.0, seed=0)
+        assert sim["truth"]["g_bp"] > 0.0
+        grid = make_grid(sim)
+        names = FIT_CORE + TOPOLOGIES["efferent"]
+        build = build_model(grid, sim, "efferent")
+        spec = build(jnp.array([sim["truth"][n] for n in names]))
+        x = jnp.array([0.0, 0.0, 1.0, 1.0, 1.0, 3.0])   # a well away from rest
+        dx = spec["f"](0.0, x, (None, 0.0))
+        assert float(dx[Z]) == pytest.approx(0.0, abs=1e-12)
+
+        # ...whereas the loop model, same data, does use it.
+        names_l = FIT_CORE + TOPOLOGIES["loop"]
+        spec_l = build_model(grid, sim, "loop")(
+            jnp.array([sim["truth"][n] for n in names_l])
+        )
+        assert float(spec_l["f"](0.0, x, (None, 0.0))[Z]) > 0.1
+
+    def test_an_unknown_observer_is_refused_by_the_grid(self):
+        from vpjax.validation.brain_body import make_grid
+
+        sim = simulate("efferent", duration=200.0, decay=100.0, seed=0)
+        with pytest.raises(ValueError, match="unknown observer"):
+            make_grid(sim, ("bold", "eyebrow"))
+
+
+class TestFitBookkeeping:
+    def test_aic_follows_from_the_likelihood_and_the_count(self):
+        from vpjax.validation.brain_body import fit_topology
+
+        sim = simulate("efferent", duration=300.0, decay=150.0, seed=0)
+        r = fit_topology(sim, "efferent", restarts=1, max_steps=40)
+        assert r["aic"] == pytest.approx(
+            2.0 * r["n_params"] - 2.0 * r["log_likelihood"]
+        )
+        assert r["n_params"] == len(FIT_CORE) + len(TOPOLOGIES["efferent"])
