@@ -38,7 +38,31 @@ the flow-inducing signal through a first-order lag,
 latency and ``beta`` its gain.  This is the mechanism by which a
 non-neural drive can masquerade as a neural one in BOLD, which is the
 HCP-A objection to drug studies in a nutshell; modelling it with a
-measured input is how the two are separated.  Channels may be sparse -- a pupil trace
+measured input is how the two are separated.
+
+"Vascular" overstates it for respiration, though, and the evidence is
+a knockout rather than a correlation: Tu and Zhang (eLife 2022,
+10.7554/eLife.81555) recorded electrophysiology, rsfMRI and
+respiration together and found the respiration-related BOLD network
+mediated by gamma-band activity and *abolished* when brain-wide neural
+activity was silenced while breathing continued.  A CO2-driven network
+would have survived that.  So a measured input may act on the neural
+drive as well, and naming it a vascular input assumes away the
+question.  Listing an input in *neural_inputs* gives it a second gain
+``beta_neural_<u>`` on ``dz/dt``, and the likelihood ratio against the
+model without it is the test of whether that route is there.
+
+Both routes are driven from the *same* lag state, so they differ in
+BOLD only by the drive's own low-pass and the ``z -> s`` coupling.
+That is deliberate and follows ``beta_vasc`` in
+:mod:`vpjax.validation.statespace_recovery`: placing the two routes
+where they are maximally confusable makes any separation the fit
+reports a worst-case result rather than an artefact of giving one route
+a distinguishing time constant.  It also costs no extra state and no
+extra lag parameter.  What separates them is not BOLD but the fast
+channels, which see ``z`` and not ``s``.
+
+Channels may be sparse -- a pupil trace
 that is valid a quarter of the time is a legitimate observation of the
 drive a quarter of the time, and the presence mask handles it without
 interpolation.
@@ -75,9 +99,17 @@ N_CORE = 5   # drive + four Balloon states
 
 
 def param_names(
-    channels: tuple[str, ...] = (), nuisance: bool = True, inputs: tuple[str, ...] = ()
+    channels: tuple[str, ...] = (),
+    nuisance: bool = True,
+    inputs: tuple[str, ...] = (),
+    neural_inputs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    """Free-parameter names for a model with these auxiliary *channels* and *inputs*."""
+    """Free-parameter names for a model with these auxiliary *channels* and *inputs*.
+
+    An input named in *neural_inputs* carries a second gain
+    ``beta_neural_<u>`` on the neural drive beside its ``beta_<u>`` on
+    the flow-inducing signal.
+    """
     names = list(CORE_NAMES)
     for c in channels:
         names.append(f"gain_{c}")
@@ -86,8 +118,15 @@ def param_names(
         names.append(f"r_{c}")
     for u in inputs:
         names += [f"beta_{u}", f"tau_in_{u}"]
+        if u in neural_inputs:
+            names.append(f"beta_neural_{u}")
     names.append("r_bold")
     return tuple(names)
+
+
+def neural_sign_key(name: str) -> str:
+    """Key under which a neural route's loading sign is held in ``sign``."""
+    return f"neural_{name}"
 
 
 PARAM_NAMES = param_names(("eeg",), nuisance=True)
