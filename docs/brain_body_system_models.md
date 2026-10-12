@@ -281,6 +281,121 @@ Equal-SNR scaling is a deliberate fairness choice, not a claim that real
 channels are equally clean. And identifiability of each topology *on its own*
 is not the same as being able to tell two topologies *apart*, which is Step 1.
 
+## Step 1 result: four of five separate cleanly, and the fifth pair is the one the study cares about
+
+Step 0 asked whether each topology is identifiable on its own. Step 1 asks the
+question a study actually faces: data came from one topology, all five are
+fitted to it, and does the right one win? Settings are the ones Step 0 argued
+for — physiology present, `gain_hr` fixed at 1, channels fast + BOLD + heart
+rate at SNR 3 against each channel's own deterministic excursion, 900 s, TR
+2.0 s, loop gain 0.25, three seeds. Omitted gains are held at **exactly zero**
+in the fitted model, never at the value that generated the data. Full output in
+`docs/results/brain_body_confusion.json`; rerun with
+`scripts/brain_body_confusion.py`.
+
+Median dAIC above the row's best, rows the generating topology and columns the
+fitted one:
+
+| data \ fit | efferent | afferent | common | loop | measurement |
+|---|---|---|---|---|---|
+| efferent | **0.00** | 45.99 | 3.03 | 1.63 | 46.26 |
+| afferent | 50.67 | **0.00** | 40.06 | 31.26 | 77.05 |
+| common | 3.08 | 25.46 | **0.00** | 2.41 | 39.35 |
+| loop | 19.56 | 71.46 | 24.74 | **0.00** | 60.85 |
+| measurement | 112.21 | 126.90 | 111.57 | 113.05 | **0.00** |
+
+The diagonal wins every row, but that is the wrong thing to read first. A dAIC
+under about 2 is not a preference, and two cells sit inside it.
+
+**Measurement-only is rejected overwhelmingly, which is the result that most
+matters.** A recording in which the input moves the vasculature and the body
+directly and the brain contributes nothing loses by 111 to 127 dAIC against
+every alternative, and every alternative loses to it by a comparable margin on
+its own data. No seed comes close to confusing it. A study with these three
+channels can say whether the brain is in the causal path at all, and that is the
+first question anyone will ask of a physiological-confound story.
+
+**The loop is detectable, and the nested pair is asymmetric in the right
+direction.** `efferent` sits strictly inside `loop` (`g_bp` the extra
+parameter), so that pair admits a likelihood ratio: on loop data, 2·dLL is 38.6,
+38.5 and 21.6 across seeds against a 3.84 critical value, so the loop is
+detected in every seed. On efferent data the same ratio is −0.13, 0.37 and
+−0.37 — `g_bp` buys nothing, and AIC correctly charges 1.63 for carrying it.
+The design can find a body-to-brain arm when there is one without inventing one
+when there is not.
+
+**Efferent versus common is not resolved**, and the median table conceals it.
+Per seed on efferent data the margin over `common` is +0.26, **−0.81** and
++1.63: one seed in three names the wrong topology, and no seed produces a margin
+worth reporting either way. On common data the margins over `efferent` are
++0.81, +2.24 and +3.08 — the same thin band. So "truth wins" is true of the
+median and not of the evidence. The right summary is that a single
+input-onset run cannot tell **the input drives the brain and the body follows**
+from **the input drives brain and body independently**.
+
+That is exactly the distinction this study wants, so it is worth being precise
+about why one run cannot make it. Both topologies put the same input into z and
+produce correlated brain and body excursions on the same clock; they differ only
+in whether the body's excursion is *caused by* z or merely *concurrent with* it.
+A single shared onset gives no leverage on that, which is what discriminators 3
+and 4 — the drug-free perturbation arms — exist to supply: a body-first
+perturbation moves `a` while leaving the input flat, and under `common` the
+brain does not follow. Step 1's negative result is therefore the argument for
+Step 2 rather than a problem with it.
+
+### The predictions I recorded in advance, scored
+
+Two of three right, and the one I got wrong matters. I predicted common
+against loop as the genuinely hard pair; it is not — 2.41 on common data and
+24.74 the other way, so the asymmetry resolves it. The hard pair is
+**efferent against common**, mutually inside the noise, which I had not
+flagged. I predicted measurement-only would be the one most important to
+reject, and it is rejected by over 110 dAIC. I predicted efferent against
+afferent would be easiest given a fast channel, and it is: 45.99 and 50.67.
+
+Scope not yet covered: this matrix is the all-three-channel configuration
+only. Step 0 already rules out BOLD alone, so the remaining cell worth running
+is BOLD + heart rate *without* the fast channel — the configuration an
+fMRI-only study with a pulse oximeter actually has. That is a one-flag rerun
+(`--observers bold hr`) and belongs with Step 2.
+
+### What the fit recovers, and what it does not
+
+Topology selection working does not mean the parameters are measured. On the
+diagonal, median estimate over truth:
+
+| | coupling and body | hemodynamic nuisance |
+|---|---|---|
+| recovered | `g_bb` 0.90–0.92x, `g_bp` 0.91–1.00x, `beta_a` 0.87–0.91x, `tau_a` 0.98–1.07x, `beta_vasc` 0.94x | — |
+| not recovered | — | `kappa` 0.31x–2.45x, `tau` 0.70x–2.07x, `tau_z` 0.95x–1.77x |
+
+The brain-entry gain `beta` looks poor on its own (0.56x–1.05x), but it is
+poor in a specific and harmless way: it trades against `tau_z`, and the
+**product** `beta·tau_z` — the DC gain of z's response to the input, which is
+the only combination the Balloon downstream actually sees — recovers to
+0.963–1.013 in every seed and every topology carrying it. The loop gain
+`g_bb·g_bp·tau_z·tau_a` recovers to 0.88–0.95 of its true 0.25 likewise. So the
+reportable quantities are the coupling gains and the DC gains, not the rate
+constants, and a results table should be written in those terms.
+
+### Two caveats that are mine, not the design's
+
+The per-cell `identifiable` flag is mostly `False`, which looks alarming beside
+Step 0's clean verdicts and is a different test: Step 0 evaluates curvature at
+the nominal point over the structural parameters, while this flag evaluates it
+at the *fitted* optimum with the two process-noise variances `q_z` and `q_a`
+also free. Those two add near-flat directions of their own, and the flat
+combinations are in the nuisance block the table above already reports as
+unrecovered. It does not contradict Step 0 and it does not touch topology
+selection, but the flag should not be read as a structural verdict.
+
+Second, three of the fifteen nested likelihood ratios come out *negative*
+(−13.03, −1.11, −0.27). A superset model must fit at least as well, so a
+negative ratio is an optimiser failure and not evidence — three restarts and 200
+steps are not always enough. The magnitudes are small except on `afferent` data
+where both models are misspecified anyway, so the conclusions above do not rest
+on them, but a published version of this matrix needs more restarts.
+
 ## Scope
 
 No compound-specific parameters belong in any of this. As with
