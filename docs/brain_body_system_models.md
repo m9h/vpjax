@@ -280,6 +280,11 @@ there, not that they are globally identifiable or that a fit will find them.
 Equal-SNR scaling is a deliberate fairness choice, not a claim that real
 channels are equally clean. And identifiability of each topology *on its own*
 is not the same as being able to tell two topologies *apart*, which is Step 1.
+That last caveat turned out to be the important one: the heading above is
+accurate for what Step 0 tested, but **do not carry it forward to the
+discrimination question** — Step 1b finds the fast channel decisive there, and
+reading this section's headline as covering model choice would license dropping
+EEG from the design.
 
 ## Step 1 result: four of five separate cleanly, and the fifth pair is the one the study cares about
 
@@ -356,8 +361,9 @@ afferent would be easiest given a fast channel, and it is: 45.99 and 50.67.
 Scope not yet covered: this matrix is the all-three-channel configuration
 only. Step 0 already rules out BOLD alone, so the remaining cell worth running
 is BOLD + heart rate *without* the fast channel — the configuration an
-fMRI-only study with a pulse oximeter actually has. That is a one-flag rerun
-(`--observers bold hr`) and belongs with Step 2.
+fMRI-only study with a pulse oximeter actually has. That was a one-flag rerun
+(`--observers bold hr`) and is Step 1b below, where it turned out to carry the
+sharpest result in this document.
 
 ### What the fit recovers, and what it does not
 
@@ -395,6 +401,84 @@ negative ratio is an optimiser failure and not evidence — three restarts and 2
 steps are not always enough. The magnitudes are small except on `afferent` data
 where both models are misspecified anyway, so the conclusions above do not rest
 on them, but a published version of this matrix needs more restarts.
+
+## Step 1b result: without a fast channel, a body-only effect is reported as a brain effect
+
+The same matrix with the fast channel removed — BOLD + heart rate only, the
+configuration an fMRI site with a pulse oximeter actually has, and the one cell
+Step 0 had not already ruled out. Everything else is unchanged. Output in
+`docs/results/brain_body_confusion_bold_hr.json`, via
+`scripts/brain_body_confusion.py --observers bold hr`.
+
+| data \ fit | efferent | afferent | common | loop | measurement | truth wins |
+|---|---|---|---|---|---|---|
+| efferent | **0.00** | 32.99 | 0.58 | 1.10 | 0.34 | nominal |
+| afferent | 11.02 | **0.00** | 48.26 | 29.36 | 50.04 | yes |
+| common | 0.00 | 29.74 | *0.90* | 0.95 | 0.89 | **no** |
+| loop | 6.05 | 42.97 | 32.28 | **0.00** | 32.09 | yes |
+| measurement | 0.00 | 29.21 | 1.09 | 1.06 | *0.91* | **no** |
+
+Three of the five topologies collapse into one another. `efferent`, `common`
+and `measurement` sit within 1.1 dAIC in every direction, and `efferent` takes
+the median win in all three of those rows whether or not it generated the data.
+Per seed the winner is essentially arbitrary: on `efferent` data the three seeds
+name efferent, measurement and loop; on `measurement` data they name efferent,
+measurement and common. The truth margin is negative in two of three seeds on
+`efferent` data, in three of three on `common`, and in two of three on
+`measurement`.
+
+**The consequential cell is `measurement` data fitted by `efferent`.** The
+generating model there has no brain involvement at all — the input moves the
+vasculature and the body directly, and z contributes nothing — and the
+preferred report is that the input drives the brain. With all three channels
+that same cell loses by 112 to 120 dAIC in every seed. So the fast channel is
+not a refinement of the three-channel result; it is the whole of it. Removing
+it converts the one finding most worth having, *the brain is in the causal
+path*, into a false positive that a fit will produce on data where it is false.
+
+Two topologies survive, and for reasons worth separating:
+
+- **`afferent`** survives (7.7 to 14.4 dAIC margin, 3/3 seeds) because its
+  input enters the *body*. The collapsed trio all drive z, so they are
+  competing to explain the same BOLD time course via the same route; afferent
+  is not.
+- **`loop`** survives (6.1 to 10.9 dAIC, 3/3 seeds) because closing the loop
+  changes the *amplitude* by `1/(1 - L)`, which BOLD does see. The nested
+  likelihood ratio confirms the limit of this: on `measurement` data, 2·dLL for
+  `efferent ⊂ loop` is 0.94, 0.70 and 1.65 against a 3.84 critical value, so
+  the loop is correctly *not* claimed where there is none. Detecting a loop and
+  identifying its direction remain different questions — Step 0 showed the
+  BOLD-only flat direction is exactly the split of the loop gain.
+
+### Reconciling this with Step 0
+
+Step 0 concluded that physiology confers identifiability and the fast channel
+only buys precision. That stands, and it is not in tension with this, because
+the two steps ask different questions. Step 0 asks whether each topology's
+parameters are resolvable *given that topology is correct* — a within-model
+question, and there the peripheral channel is what opens up the body arm because
+no brain channel observes `a` at all. Step 1b asks whether the topology itself
+can be chosen from the data — a between-model question, and there the fast
+channel is decisive because the candidates differ in how the input reaches z,
+which only a channel that observes z can see.
+
+The practical statement is therefore: **physiology makes the parameters
+estimable, the fast channel makes the model selectable, and neither substitutes
+for the other.** Reading Step 0's headline forward as though it covered
+discrimination would have licensed dropping EEG from the design, which this row
+shows would cost the primary inference.
+
+### What this does to the recording set
+
+For the topology question the fast channel moves from desirable to load-bearing.
+Both open fMRI-only datasets in `docs/data_access_contacts.md` fall on the wrong
+side of this line: they can estimate parameters within an assumed topology and
+cannot choose the topology, so a brain-effect claim from them is not
+separable from a body-only effect. That raises the value of the simultaneous
+EKG in the Imperial DMT dataset and of this study's own concurrent EEG, and it
+is an argument against any analysis plan that regresses physiology out of the
+EEG before fitting — doing so removes the channel that carries the
+discrimination.
 
 ## Scope
 
