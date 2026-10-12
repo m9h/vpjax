@@ -61,6 +61,29 @@ GAIN_NAMES = ("beta", "beta_a", "beta_vasc", "g_bb", "g_bp")
 #: from a single run and fixing them is the honest choice.
 CORE_NAMES = ("kappa", "tau", "tau_z", "tau_a")
 
+#: Free loadings a channel may carry, and the state each scales.
+#:
+#: A real channel reports its state up to an unknown gain, so it is
+#: tempting to treat unit loadings as an optimistic assumption.  For the
+#: fast channel it is not needed: the drive's scale is pinned by the
+#: Balloon, where ``z`` enters ``ds/dt`` with a coefficient of exactly
+#: one, so ``gain_fast`` is estimable alongside everything else.
+#:
+#: The autonomic state has no such anchor.  ``a`` appears only through
+#: ``g_bp`` (into the drive) and through its own channel loading, so
+#: rescaling ``a -> c a`` while sending ``beta_a -> c beta_a``,
+#: ``g_bp -> g_bp / c`` and ``gain_hr -> gain_hr / c`` leaves every
+#: observation untouched.  That is an exact invariance, so a free
+#: ``gain_hr`` always costs exactly one flat direction, at any run
+#: length and with any number of channels.
+#:
+#: The consequence is that ``gain_hr = 1`` is the *identifying
+#: convention* rather than an optimistic approximation: it defines the
+#: autonomic state in the units of the series actually recorded, which
+#: is what makes ``beta_a`` and ``g_bp`` mean anything.  Fixing it costs
+#: no generality and is the only way the body arm is estimable at all.
+LOADING_NAMES = {"fast": "gain_fast", "hr": "gain_hr"}
+
 #: Observable channels, with the noise SD each is scaled by.  Scaling
 #: by noise makes the Jacobian's singular values *detectable* units, so
 #: the numeric rank reflects what a recording can actually resolve
@@ -146,6 +169,10 @@ def nominal(target_loop_gain: float = DEFAULT_LOOP_GAIN) -> dict[str, float]:
         # Coupling gains: even split of the closed-loop gain.
         "g_bb": c / tau_a,
         "g_bp": c / tau_z,
+        # Channel loadings.  Unity is a *normalisation*, not a guess --
+        # see LOADING_NAMES.
+        "gain_fast": 1.0,
+        "gain_hr": 1.0,
     }
 
 
@@ -194,7 +221,12 @@ def baseline_state() -> jnp.ndarray:
     return jnp.array([0.0, 0.0, 1.0, 1.0, 1.0, 0.0])
 
 
-def observe(x, bold_params: BOLDParams | None = None):
+def observe(
+    x,
+    bold_params: BOLDParams | None = None,
+    gain_fast: float = 1.0,
+    gain_hr: float = 1.0,
+):
     """``(fast, bold, hr)`` from a state trajectory of shape ``(T, 6)``.
 
     ``fast`` is the drive itself, standing for a band-limited EEG power
@@ -210,7 +242,7 @@ def observe(x, bold_params: BOLDParams | None = None):
     bold = bp.V0 * (
         bp.k1 * (1.0 - q) + bp.k2 * (1.0 - q / v) + bp.k3 * (1.0 - v)
     )
-    return x[:, Z], bold, x[:, A]
+    return gain_fast * x[:, Z], bold, gain_hr * x[:, A]
 
 
 def integrate(p: dict, u: jnp.ndarray, dt: float):
@@ -264,7 +296,7 @@ def topology_params(
     return p
 
 
-def free_names(topology: str) -> tuple[str, ...]:
+def free_names(topology: str, loadings: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Parameters a fit would estimate for *topology*: its gains plus the time
     constants the topology gives meaning to.
 
@@ -286,7 +318,15 @@ def free_names(topology: str) -> tuple[str, ...]:
         n for n in CORE_NAMES
         if n not in driven or any(g in gains for g in driven[n])
     )
-    return names + gains
+    # A loading on a channel whose state is never driven is as
+    # meaningless as that state's time constant, so it is dropped on the
+    # same rule.
+    anchor = {"fast": ("beta", "g_bp"), "hr": ("beta_a", "g_bb")}
+    extra = tuple(
+        LOADING_NAMES[c] for c in loadings
+        if c in LOADING_NAMES and any(g in gains for g in anchor[c])
+    )
+    return names + gains + extra
 
 
 def topology_identifiability(
@@ -301,6 +341,7 @@ def topology_identifiability(
     rise: float = 60.0,
     decay: float = 420.0,
     snr: float = 3.0,
+    loadings: tuple[str, ...] = (),
     overrides: dict | None = None,
     target_loop_gain: float = DEFAULT_LOOP_GAIN,
     rtol: float = 1e-5,
@@ -340,7 +381,7 @@ def topology_identifiability(
         raise ValueError("at least one observer is required")
 
     p0 = topology_params(topology, overrides, target_loop_gain)
-    names = free_names(topology)
+    names = free_names(topology, loadings)
     t = np.arange(0.0, duration, dt)
     u = jnp.asarray(input_shape(t, onset, rise, decay))
     steps = {
@@ -354,7 +395,9 @@ def topology_identifiability(
         for i, n in enumerate(names):
             p[n] = p0[n] * mult[i]
         traj = integrate(p, u, dt)
-        fast, bold, hr = observe(traj)
+        fast, bold, hr = observe(
+            traj, gain_fast=p["gain_fast"], gain_hr=p["gain_hr"]
+        )
         return {"fast": fast, "bold": bold, "hr": hr}
 
     ones = jnp.ones(len(names))
@@ -382,4 +425,5 @@ def topology_identifiability(
     result["names"] = names
     result["noise_sd"] = noise_sd
     result["loop_gain"] = loop_gain(p0)
+    result["loadings"] = tuple(loadings)
     return result

@@ -67,6 +67,10 @@ def main():
     p.add_argument("--snr", type=float, default=3.0)
     p.add_argument("--loop-gain", type=float, default=0.25,
                    help="closed-loop gain for the loop topology; must be < 1")
+    p.add_argument("--loadings", nargs="*", default=[], choices=["fast", "hr"],
+                   help="channels whose observation loading is left free; a free "
+                        "'hr' loading always costs one flat direction, since the "
+                        "autonomic state has no scale anchor (see LOADING_NAMES)")
     p.add_argument("--rtol", type=float, default=1e-5)
     p.add_argument("--only", nargs="+", choices=sorted(TOPOLOGIES),
                    help="restrict to these topologies")
@@ -78,11 +82,14 @@ def main():
         duration=a.duration, dt=a.dt, tr=a.tr, fast_dt=a.fast_dt, hr_dt=a.hr_dt,
         onset=a.onset, rise=a.rise, decay=a.decay, snr=a.snr,
         target_loop_gain=a.loop_gain, rtol=a.rtol,
+        loadings=tuple(a.loadings),
     )
     print(f"input peaks at 1 from {a.onset:.0f} s in a {a.duration:.0f} s run; "
           f"BOLD every {a.tr} s, fast channel every {a.fast_dt} s, "
           f"physiology every {a.hr_dt} s; every channel at SNR {a.snr}")
     print(f"channels: {', '.join(CHANNELS)}  (fast = drive, hr = autonomic state)")
+    print(f"free loadings: {'+'.join(a.loadings) if a.loadings else 'none '
+          '(gain_hr = 1 is the identifying convention, not an assumption)'}")
     print()
     print(f"{'topology':12s} {'channels':17s} {'rank/P':>7s} {'cond':>9s} "
           f"{'ident':>6s}  flat directions")
@@ -113,6 +120,7 @@ def main():
                 "is_identifiable": bool(r["is_identifiable"]),
                 "flat_directions": flat,
                 "loop_gain": float(r["loop_gain"]),
+                "loadings": list(r["loadings"]),
                 "noise_sd": {k: float(v) for k, v in r["noise_sd"].items()},
             })
         print()

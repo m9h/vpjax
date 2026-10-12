@@ -225,15 +225,61 @@ only stable while that product stays below one, and the closer it runs to the
 boundary the more it amplifies any input. Any claim about loop strength has to
 state where it sits relative to that boundary.
 
+### The unit loading on physiology is a convention, not an assumption
+
+Step 0 above reads the physiological channel as `hr = a`. That looks like the
+weak point of the whole result: a real channel reports its state up to an
+unknown gain, and a free gain is one more parameter. Testing it
+(`--loadings hr`) gives a sharp answer, and it is the opposite of a weakness.
+
+| free loading | efferent | afferent | common | loop | measurement |
+|---|---|---|---|---|---|
+| none | 6/6 ✓ | 6/6 ✓ | 6/6 ✓ | 7/7 ✓ | 5/5 ✓ |
+| `gain_fast` | 7/7 ✓ | 7/7 ✓ | 7/7 ✓ | 8/8 ✓ | 5/5 ✓ |
+| `gain_hr` | 6/7 | 6/7 | 6/7 | 7/8 | 5/6 |
+
+**A free loading on the fast channel costs nothing. A free loading on the
+physiological channel costs exactly one flat direction, in every topology, with
+every combination of channels.** The asymmetry has a one-line cause:
+
+- the drive's scale is **anchored by the Balloon**, where `z` enters `ds/dt`
+  with a coefficient of exactly one, so `gain_fast` is estimable alongside
+  everything else;
+- the autonomic state has **no anchor**. `a` appears only through `g_bp` (into
+  the drive) and through its own loading, so sending `a -> c a` while sending
+  `beta_a -> c beta_a`, `g_bb -> c g_bb`, `g_bp -> g_bp / c` and
+  `gain_hr -> gain_hr / c` leaves every observation untouched.
+
+That is an exact invariance, so the flat direction is structural and no run
+length or extra channel removes it. The numerical null space confirms it term
+for term: `+1` on each gain that *writes into* `a` and `-1` on each gain that
+*reads out of* it, with equal magnitudes — `-0.71 g_bb + 0.71 gain_hr` for
+`efferent`, `-0.58 beta_a + 0.58 g_bp + 0.58 gain_hr` for `afferent`, and so on,
+each at `1/sqrt(k)` for its `k` loaded terms. The tests assert the agreement
+rather than the numbers, so the invariance is checked and not merely recorded.
+
+So `gain_hr = 1` is the **identifying convention**: it defines the autonomic
+state in the units of the series actually recorded, which is exactly what makes
+`beta_a` and `g_bp` interpretable — a body-to-brain gain in drive units per unit
+of measured heart rate. Fixing it costs no generality, and it is the only way
+the body arm is estimable at all. **Step 0's result stands unchanged**, and the
+free drive loading is a bonus: the fast channel does not need its sign or scale
+assumed, which is what the recorded-data model already does for it.
+
+The practical rule for the protocol: the physiological series has to be recorded
+in reportable units and used as the definition of the autonomic state, not
+rescaled away by a preprocessing step that standardises it per run. Standardise
+per run and the loading varies between runs, which reintroduces the very
+parameter that cannot be estimated.
+
 ### What Step 0 does not say
 
 It is a *local* test at one nominal point, so it gives a necessary condition and
 not a sufficient one: passing means the parameters are resolvable to first order
-there, not that they are globally identifiable or that a fit will find them. It
-also assumes the physiological channel reports `a` with a known unit loading,
-which is optimistic — a free loading is an extra parameter, and whether it
-survives is a question for Step 1. And equal-SNR scaling is a deliberate
-fairness choice, not a claim that real channels are equally clean.
+there, not that they are globally identifiable or that a fit will find them.
+Equal-SNR scaling is a deliberate fairness choice, not a claim that real
+channels are equally clean. And identifiability of each topology *on its own*
+is not the same as being able to tell two topologies *apart*, which is Step 1.
 
 ## Scope
 

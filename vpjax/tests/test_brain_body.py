@@ -146,3 +146,73 @@ class TestIdentifiability:
         for name in ("efferent", "afferent", "common", "measurement"):
             assert loop_gain(topology_params(name)) == 0.0
         assert loop_gain(topology_params("loop")) == pytest.approx(DEFAULT_LOOP_GAIN)
+
+
+class TestChannelLoadings:
+    """A free loading on the drive is estimable; one on the body state is not.
+
+    The drive's scale is pinned by the Balloon, where ``z`` enters
+    ``ds/dt`` with a coefficient of exactly one.  The autonomic state has
+    no such anchor, so rescaling it can be absorbed by its own gains and
+    its channel loading together -- an exact invariance, and therefore a
+    flat direction that no amount of data removes.
+    """
+
+    ALL = ("bold", "fast", "hr")
+
+    @pytest.mark.parametrize("topology", sorted(TOPOLOGIES))
+    def test_a_free_drive_loading_stays_identifiable(self, topology):
+        r = topology_identifiability(
+            topology, observers=self.ALL, loadings=("fast",),
+            duration=600.0, decay=300.0,
+        )
+        assert r["is_identifiable"], (topology, r.get("collinear_sets"))
+
+    @pytest.mark.parametrize("topology", sorted(TOPOLOGIES))
+    def test_a_free_body_loading_always_costs_exactly_one_direction(self, topology):
+        r = topology_identifiability(
+            topology, observers=self.ALL, loadings=("hr",),
+            duration=600.0, decay=300.0,
+        )
+        assert not r["is_identifiable"]
+        assert r["rank"] == r["n_params"] - 1
+        assert len(r["collinear_sets"]) == 1
+
+    @pytest.mark.parametrize("topology", sorted(TOPOLOGIES))
+    def test_the_flat_direction_is_the_rescaling_of_the_body_state(self, topology):
+        """The null space matches the analytic invariance, term for term.
+
+        Sending ``a -> c a`` leaves every observation unchanged provided
+        the gains that *drive* ``a`` scale up with it and the gains that
+        *read* ``a`` scale down.  On the log scale that is a vector of
+        ``+1`` on each driving gain and ``-1`` on each reading one, so
+        the null direction must load exactly those parameters with
+        exactly those relative signs.
+        """
+        r = topology_identifiability(
+            topology, observers=self.ALL, loadings=("hr",),
+            duration=600.0, decay=300.0,
+        )
+        (flat,) = r["collinear_sets"]
+        loaded = dict(zip(flat["params"], flat["coefficients"]))
+        active = TOPOLOGIES[topology]
+        # Gains writing into a, and gains reading out of it.
+        drives = [g for g in ("beta_a", "g_bb") if g in active]
+        reads = [g for g in ("g_bp",) if g in active] + ["gain_hr"]
+        assert set(loaded) == set(drives + reads)
+        # One overall sign is arbitrary; fix it from the first driver.
+        s = np.sign(loaded[drives[0]])
+        for g in drives:
+            assert np.sign(loaded[g]) == s
+        for g in reads:
+            assert np.sign(loaded[g]) == -s
+        # Equal magnitudes: the invariance weights every term the same.
+        mags = [abs(v) for v in loaded.values()]
+        assert max(mags) == pytest.approx(min(mags), rel=0.05)
+        assert max(mags) == pytest.approx(1.0 / np.sqrt(len(loaded)), rel=0.05)
+
+    def test_a_loading_on_an_undriven_state_is_not_offered(self):
+        """``measurement`` never drives the drive, so it has no drive loading."""
+        assert "gain_fast" not in free_names("measurement", ("fast",))
+        assert "gain_hr" in free_names("measurement", ("hr",))
+        assert "gain_fast" in free_names("efferent", ("fast",))
