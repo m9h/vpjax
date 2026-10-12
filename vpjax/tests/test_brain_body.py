@@ -300,3 +300,60 @@ class TestFitBookkeeping:
             2.0 * r["n_params"] - 2.0 * r["log_likelihood"]
         )
         assert r["n_params"] == len(FIT_CORE) + len(TOPOLOGIES["efferent"])
+
+
+class TestExplicitInitialization:
+    def test_named_start_reaches_estimator_and_errors_keep_their_units(self, monkeypatch):
+        import vpjax.statespace as ss
+        from vpjax.validation.brain_body import fit_topology
+
+        sim = simulate("efferent", duration=10.0, dt=0.1)
+        names = ("tau_a", "g_bb")
+        captured = {}
+
+        def fake_fit(build, grid, init, **kw):
+            captured["init"] = np.asarray(init)
+            captured.update(kw)
+            return dict(theta=init, log_theta=jnp.log(init), log_likelihood=1.0,
+                        success=True, best_start=0, all_log_likelihoods=jnp.array([1.0]))
+
+        def fake_uncertainty(*args):
+            return dict(standard_error=jnp.array([0.2, 0.3]),
+                        positive_definite=True, eigenvalues=jnp.array([1., 2.]),
+                        correlation=jnp.eye(2), identifiable=True, curvature_ratio=0.5)
+
+        monkeypatch.setattr(ss, "fit_statespace", fake_fit)
+        monkeypatch.setattr(ss, "parameter_uncertainty", fake_uncertainty)
+        r = fit_topology(sim, "efferent", fit_names=names,
+                         init={"g_bb": 0.2}, restarts=0)
+        assert captured["init"] == pytest.approx([sim["truth"]["tau_a"] * 0.5, 0.2])
+        assert captured["restarts"] == 0
+        assert r["standard_error"]["g_bb"] == pytest.approx(0.3)
+        assert r["standard_error_absolute"]["g_bb"] == pytest.approx(0.06)
+        assert r["standard_error_scale"] == "log_parameter"
+
+    @pytest.mark.parametrize("init", [{"typo": 1}, {"g_bb": 0},
+                                      {"g_bb": -1}, {"g_bb": np.nan},
+                                      {"g_bb": np.inf}])
+    def test_invalid_starts_are_rejected(self, init):
+        from vpjax.validation.brain_body import fit_topology
+        sim = simulate("efferent", duration=10.0, dt=0.1)
+        with pytest.raises(ValueError, match="init"):
+            fit_topology(sim, "efferent", init=init)
+
+
+class TestPeriodicDrive:
+    def test_schedule_is_zero_before_onset_and_repeats_on_the_clock(self):
+        from vpjax.validation.brain_body import duty_cycle_shape, drive_series
+        times = np.array([-1, 0, 4, 5, 15, 16, 20, 21], dtype=float) + 3
+        expected = [0, 1, 1, 0, 0, 1, 1, 0]
+        assert duty_cycle_shape(times, 16, onset=3).tolist() == expected
+        assert drive_series(times, "duty", period=16, onset=3).tolist() == expected
+
+    @pytest.mark.parametrize("kw", [{"period": 0}, {"period": -1},
+                                    {"period": 16, "on_fraction": 0},
+                                    {"period": 16, "on_fraction": 1}])
+    def test_invalid_schedule_is_rejected(self, kw):
+        from vpjax.validation.brain_body import duty_cycle_shape
+        with pytest.raises(ValueError):
+            duty_cycle_shape(np.array([0.]), **kw)

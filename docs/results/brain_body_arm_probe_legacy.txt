@@ -1,0 +1,13 @@
+Historical scratch output, preserved before correction.
+SE column is LOG-PARAMETER SE; se/est and se/truth columns are INVALID.
+These aggregate logs do not record convergence or Hessian positive-definiteness.
+
+arm                  drive     dur      truth       est        se  se/est
+brain-first  g_bb    block     240     0.0500    0.0521    0.4207    8.07
+brain-first  g_bb    block     480     0.0500    0.0417    0.3587    8.61
+brain-first  g_bb    duty      240     0.0500    0.0377    0.5232   13.86
+brain-first  g_bb    duty      480     0.0500    0.0345    0.3482   10.08
+body-first   g_bp    block     240     0.2500    0.2144       nan     nan
+body-first   g_bp    block     480     0.2500    0.2132    0.4093    1.92
+body-first   g_bp    duty      240     0.2500    0.2062    0.3159    1.53
+body-first   g_bp    duty      480     0.2500    0.2720    0.2003    0.74

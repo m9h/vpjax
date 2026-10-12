@@ -1,0 +1,15 @@
+Historical scratch output, preserved before correction.
+SE column is LOG-PARAMETER SE; se/est and se/truth columns are INVALID.
+These aggregate logs do not record convergence or Hessian positive-definiteness.
+
+arm                 period   f(Hz)    atten        est        se se/truth
+brain-first g_bb         8  0.1250    0.126     0.0391    0.3801    7.60
+brain-first g_bb        16  0.0625    0.247     0.0396    0.2989    5.98
+brain-first g_bb        32  0.0312    0.454     0.0463    0.2418    4.84
+brain-first g_bb        64  0.0156    0.714     0.0434    0.2394    4.79
+brain-first g_bb       128  0.0078    0.898     0.0446    0.2728    5.46
+body-first  g_bp         8  0.1250    0.537     0.2658    0.1838    0.74
+body-first  g_bp        16  0.0625    0.786     0.2569    0.1949    0.78
+body-first  g_bp        32  0.0312    0.931     0.2581    0.2144    0.86
+body-first  g_bp        64  0.0156    0.981     0.2242    0.2952    1.18
+body-first  g_bp       128  0.0078    0.995     0.1956    0.3278    1.31

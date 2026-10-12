@@ -1,0 +1,211 @@
+{
+  "settings": {
+    "seeds": [
+      4
+    ],
+    "periods": [
+      32.0
+    ],
+    "factors": [
+      0.25
+    ],
+    "duration": 480,
+    "max_steps": 1000,
+    "restarts": 0,
+    "fit_names": [
+      "tau_z",
+      "q_z",
+      "tau_a",
+      "q_a",
+      "beta",
+      "g_bb"
+    ],
+    "observers": [
+      "fast",
+      "hr"
+    ],
+    "max_dt": 0.25,
+    "simulation_dt": 0.01,
+    "snr": 3,
+    "fast_dt": 2,
+    "hr_dt": 1,
+    "drive": "duty",
+    "onset": 0,
+    "on_fraction": 0.3125,
+    "q_z": 0.01,
+    "q_a": 0.01,
+    "other_initial_values": "0.5 times truth",
+    "product_start": "truth product"
+  },
+  "provenance": {
+    "python": "3.12.13",
+    "jax": "0.11.2",
+    "backend": "cpu",
+    "x64_enabled": true,
+    "git_head": "6115228069926ba0b710dccda14d90a21d4e9780",
+    "source_state": "working tree; commit containing this artifact identifies source"
+  },
+  "rows": [
+    {
+      "period": 32.0,
+      "seed": 4,
+      "factor": 0.25,
+      "truth": {
+        "tau_z": 2.0,
+        "q_z": 0.01,
+        "tau_a": 10.0,
+        "q_a": 0.01,
+        "beta": 0.5,
+        "g_bb": 0.05
+      },
+      "fit": {
+        "topology": "efferent",
+        "observers": [
+          "fast",
+          "hr"
+        ],
+        "names": [
+          "tau_z",
+          "q_z",
+          "tau_a",
+          "q_a",
+          "beta",
+          "g_bb"
+        ],
+        "n_params": 6,
+        "log_likelihood": 138.18978351300132,
+        "aic": -264.37956702600263,
+        "estimate": {
+          "tau_z": 2.167659076246021,
+          "q_z": 2.8914981114997757e-16,
+          "tau_a": 7.213156798481007,
+          "q_a": 0.011479506973838075,
+          "beta": 0.46856339019557525,
+          "g_bb": 0.0645876354686689
+        },
+        "initial": {
+          "tau_z": 1.0,
+          "q_z": 0.005,
+          "tau_a": 40.0,
+          "q_a": 0.005,
+          "beta": 0.25,
+          "g_bb": 0.0125
+        },
+        "success": false,
+        "best_start": 0,
+        "all_log_likelihoods": [
+          138.18978351300132
+        ],
+        "standard_error_scale": "log_parameter",
+        "standard_error": {
+          "tau_z": 0.12347067278715532,
+          "q_z": 3.973558720575884e-16,
+          "tau_a": 0.19194751783808683,
+          "q_a": 0.14761868446192045,
+          "beta": 0.1140247004413904,
+          "g_bb": 0.2164584127647628
+        },
+        "standard_error_absolute": {
+          "tau_z": 0.2676423245172798,
+          "q_z": 1.1489537536478633e-31,
+          "tau_a": 1.3845475432453505,
+          "q_a": 0.001694589717749418,
+          "beta": 0.05342780020485279,
+          "g_bb": 0.013980537057777166
+        },
+        "positive_definite": true,
+        "information_eigenvalues": [
+          6.449305029514831e-14,
+          12.979634217287863,
+          37.50321243002032,
+          52.9678517756332,
+          97.64109906486516,
+          1102.6717339430618
+        ],
+        "correlation": [
+          [
+            1.0,
+            0.1496924848862025,
+            -0.121859355638172,
+            0.06901902037272997,
+            -0.9303982868578514,
+            0.07202950628570662
+          ],
+          [
+            -0.46524717267103255,
+            1.0000000000000002,
+            3.6883842451807296,
+            -2.7382752776135253,
+            0.5522359587395983,
+            -3.361768964861066
+          ],
+          [
+            -0.12185935563817234,
+            0.23803704901882874,
+            0.9999999999999998,
+            -0.5354726641449451,
+            0.11317430157610797,
+            -0.671643098298131
+          ],
+          [
+            0.06901902037272913,
+            -0.06635704023595572,
+            -0.5354726641449453,
+            1.0,
+            -0.06416456816592185,
+            0.35259068808097416
+          ],
+          [
+            -0.9303982868578516,
+            -0.13300710416680386,
+            0.11317430157610932,
+            -0.06416456816592092,
+            1.0,
+            -0.13738356739961682
+          ],
+          [
+            0.07202950628570605,
+            -0.27906219196535476,
+            -0.6716430982981307,
+            0.3525906880809739,
+            -0.13738356739961702,
+            1.0000000000000002
+          ]
+        ],
+        "identifiable": false,
+        "curvature_ratio": 5.848798723127378e-17
+      },
+      "product": 0.4658807418786421,
+      "product_log_se": 0.16699209337947787,
+      "elapsed_s": 60.71855908399448
+    }
+  ],
+  "summary": [
+    {
+      "period": 32.0,
+      "n_fits": 1,
+      "all_converged": false,
+      "all_positive_definite": true,
+      "max_within_seed_ll_range": 0.0,
+      "median_gain_log_se": 0.2164584127647628,
+      "median_product_log_se": 0.16699209337947787,
+      "metrics": {
+        "g_bb": {
+          "max_within_seed_relative_range": 0.0,
+          "across_seed_cv": 0.0,
+          "median": 0.0645876354686689
+        },
+        "tau_a": {
+          "max_within_seed_relative_range": 0.0,
+          "across_seed_cv": 0.0,
+          "median": 7.213156798481007
+        },
+        "product": {
+          "max_within_seed_relative_range": 0.0,
+          "across_seed_cv": 0.0,
+          "median": 0.4658807418786421
+        }
+      }
+    }
+  ]
+}

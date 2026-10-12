@@ -1,0 +1,14 @@
+Historical scratch output, preserved before correction.
+SE column is LOG-PARAMETER SE; se/est and se/truth columns are INVALID.
+These aggregate logs do not record convergence or Hessian positive-definiteness.
+
+period 32 s
+   g_bb           ratios 0.715 0.988 0.926 1.223 1.292  median 0.988  CV 0.203
+   tau_a          ratios 1.113 0.828 1.076 0.811 0.721  median 0.828  CV 0.171
+   g_bb*tau_a     ratios 0.796 0.818 0.996 0.992 0.932  median 0.932  CV 0.094
+   beta*tau_z     ratios 1.039 0.970 0.900 1.044 1.016  median 1.016  CV 0.054
+period 64 s
+   g_bb           ratios 0.762 0.904 0.868 1.434 1.204  median 0.904  CV 0.240
+   tau_a          ratios 1.213 0.798 1.086 0.713 0.741  median 0.798  CV 0.221
+   g_bb*tau_a     ratios 0.924 0.721 0.943 1.022 0.892  median 0.924  CV 0.110
+   beta*tau_z     ratios 0.978 1.070 0.961 1.031 1.011  median 1.011  CV 0.038
