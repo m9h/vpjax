@@ -53,6 +53,7 @@ def check_local_identifiability(
     names: Sequence[str] | None = None,
     rtol: float = 1e-5,
     null_threshold: float = 0.1,
+    jac: str = "rev",
 ) -> dict[str, Any]:
     """Test local structural identifiability at a nominal parameter point.
 
@@ -76,6 +77,15 @@ def check_local_identifiability(
     null_threshold : minimum absolute coefficient in a null-space
         vector for a parameter to be reported as part of the collinear
         set (default 0.1, i.e. >10% loading).
+    jac : ``"rev"`` (default) uses :func:`jax.jacrev`, which is required
+        for any model wrapped in a ``custom_vjp`` -- diffrax solvers
+        among them.  ``"fwd"`` uses :func:`jax.jacfwd`, which costs one
+        pass per *parameter* rather than one per *observation* and is
+        the only practical choice for a long time series with few
+        parameters: a 900 s run observed on three channels is some
+        thousands of rows, so reverse mode pays thousands of passes to
+        recover the same ``P`` columns.  Use it whenever the forward
+        model is hand-rolled (``lax.scan``) rather than diffrax.
 
     Returns
     -------
@@ -103,13 +113,17 @@ def check_local_identifiability(
     elif len(names) != P:
         raise ValueError(f"len(names)={len(names)} ≠ P={P}")
 
-    # Reverse-mode Jacobian.  We'd prefer jax.jacfwd for tall Jacobians
-    # (M >> P, typical for time-series models), but diffrax's solvers
-    # are wrapped in custom_vjp and only support reverse-mode AD —
-    # jacfwd would raise "can't apply forward-mode autodiff to a
-    # custom_vjp function".  jacrev is correct for any Jacobian and is
-    # cheap when P is small (≤ ~10), which is the usual case here.
-    raw_jac = jax.jacrev(forward_fn)(params)
+    # Reverse mode is the default because diffrax's solvers are wrapped
+    # in custom_vjp and only support reverse-mode AD — jacfwd would
+    # raise "can't apply forward-mode autodiff to a custom_vjp
+    # function".  For a tall Jacobian (M >> P, typical for time-series
+    # models) from a hand-rolled forward model, forward mode is the
+    # right choice and jac="fwd" selects it; the Jacobian is the same
+    # either way.
+    if jac not in ("rev", "fwd"):
+        raise ValueError(f"jac must be 'rev' or 'fwd', not {jac!r}")
+    differentiate = jax.jacrev if jac == "rev" else jax.jacfwd
+    raw_jac = differentiate(forward_fn)(params)
     J = jnp.reshape(raw_jac, (-1, P))
 
     if not bool(jnp.all(jnp.isfinite(J))):

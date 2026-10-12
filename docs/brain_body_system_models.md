@@ -144,6 +144,97 @@ predictions. Topology 5 is the one that matters most to reject and the one BOLD
 alone cannot reject. Topology 1 against 2 should be the easiest, given a fast
 channel, and is the one most often assumed without test.
 
+## Step 0 result: physiology confers identifiability, the fast channel does not
+
+Run with `scripts/brain_body_topologies.py`; full output in
+`docs/results/brain_body_topologies.json`. A 900 s run, input peaking at 1 from
+120 s, BOLD every 2 s, fast channel every 2 s, physiology every 1 s, every
+channel scaled to the same SNR against its own excursion.
+
+| topology | BOLD | +fast | +physiology | +both | flat direction under BOLD alone |
+|---|---|---|---|---|---|
+| efferent | 4/6 | 4/6 | **6/6** | **6/6** | `tau_a`, `g_bb` each unseen |
+| afferent | 5/6 | 5/6 | **6/6** | **6/6** | `-0.71 beta_a + 0.71 g_bp` |
+| common | 4/6 | 4/6 | **6/6** | **6/6** | `tau_a`, `beta_a` each unseen |
+| loop | 6/7 | 6/7 | **7/7** | **7/7** | `-0.71 g_bb + 0.71 g_bp` |
+| measurement | 3/5 | 3/5 | **5/5** | **5/5** | `tau_a`, `beta_a` each unseen |
+
+**No topology is identifiable from BOLD alone. Every one becomes identifiable
+the moment a peripheral channel is added. Adding the fast channel changes no
+rank at all.**
+
+That reads at first like a contradiction of the autonomic confound result, where
+the EEG channel was decisive and BOLD alone was hopeless. It is not. The two
+findings are about different parameters, and together they say something sharper
+than either alone:
+
+- the **fast channel** identifies *where the input enters the brain* — the
+  `beta` against `beta_vasc` question — because it observes `z` directly and the
+  vascular route bypasses `z`;
+- the **peripheral channel** identifies *the body arm and the coupling* —
+  `tau_a`, `beta_a`, `g_bb`, `g_bp` — because **no brain channel observes `a` at
+  all**, so nothing about the autonomic state is recoverable without measuring
+  it.
+
+Neither substitutes for the other, and a study with only one of them has a named
+blind spot rather than a general loss of precision. The fast channel is not
+useless here: it improves conditioning substantially where a trade-off is
+near-flat rather than exactly flat (`afferent` goes from 1.7e11 to 2.7e10, and
+with physiology present `common` goes from 3.0e3 to 9.6e2). So the honest
+summary is **physiology confers identifiability; the fast channel buys
+precision**.
+
+The flat directions are more informative than the ranks:
+
+- **`efferent`, `common` and `measurement` lose whole parameters**, with a lone
+  `1.00` loading — `tau_a` and the gain that drives `a`. When the body is purely
+  downstream (or entirely decoupled), BOLD sees nothing of it whatsoever. This
+  is not a trade-off that more data narrows; the parameters are simply absent
+  from the likelihood.
+- **`afferent` loses a product**: `beta_a` against `g_bp`, equal and opposite.
+  BOLD cannot tell a strong input to the body with weak body-to-brain coupling
+  from a weak input with strong coupling. Only their product is determined,
+  which is precisely the quantity that is *not* the scientific claim — the claim
+  is about `g_bp`.
+- **`loop` loses exactly the split of the loop gain**: `g_bb` against `g_bp`,
+  equal and opposite. BOLD determines `g_bb g_bp tau_z tau_a`, the closed-loop
+  gain, but not how it divides between the directions. This is the same
+  combination the stability analysis singles out, arrived at independently — the
+  one quantity BOLD does fix is the one that governs whether the loop is stable,
+  and the one it cannot fix is the one that says which way causation runs.
+
+That last point is the protocol argument in its sharpest form. **A BOLD-only
+study of a brain-body loop can establish that a loop exists and how strong it
+is, while remaining unable in principle to say which direction dominates.** The
+two drug-free arms are what break that degeneracy, and they break it because
+each one drives a known end of the loop.
+
+### The stability bound, which fell out on the way
+
+The first nominal point put the loop at a closed-loop gain of exactly 1.0 and
+the simulation diverged — BOLD to minus infinity rather than back to baseline.
+Linearising the `(z, a)` subsystem explains it: the Jacobian determinant is
+`(1 - g_bb g_bp tau_z tau_a) / (tau_z tau_a)`, so a loop gain of one parks an
+eigenvalue at the origin. The integrated model reproduces the predicted
+`1 / (1 - L)` amplification to within 2%, which is the check that the bound
+describes the model and not just its linearisation.
+
+This is a constraint on the topology space rather than a detail of the
+parameterisation: a brain-body loop with positive gain in both directions is
+only stable while that product stays below one, and the closer it runs to the
+boundary the more it amplifies any input. Any claim about loop strength has to
+state where it sits relative to that boundary.
+
+### What Step 0 does not say
+
+It is a *local* test at one nominal point, so it gives a necessary condition and
+not a sufficient one: passing means the parameters are resolvable to first order
+there, not that they are globally identifiable or that a fit will find them. It
+also assumes the physiological channel reports `a` with a known unit loading,
+which is optimistic — a free loading is an extra parameter, and whether it
+survives is a question for Step 1. And equal-SNR scaling is a deliberate
+fairness choice, not a claim that real channels are equally clean.
+
 ## Scope
 
 No compound-specific parameters belong in any of this. As with

@@ -1,0 +1,789 @@
+{
+ "settings": {
+  "duration": 900.0,
+  "dt": 0.1,
+  "tr": 2.0,
+  "fast_dt": 2.0,
+  "hr_dt": 1.0,
+  "onset": 120.0,
+  "rise": 60.0,
+  "decay": 420.0,
+  "snr": 3.0,
+  "loop_gain": 0.25,
+  "rtol": 1e-05,
+  "only": null,
+  "output": "docs/results/brain_body_topologies.json"
+ },
+ "cells": [
+  {
+   "topology": "efferent",
+   "observers": [
+    "bold"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb"
+   ],
+   "rank": 4,
+   "n_params": 6,
+   "condition_number": 3.234238815307617e+31,
+   "singular_values": [
+    32.34238815307617,
+    0.7127823233604431,
+    0.08542363345623016,
+    0.0258805975317955,
+    8.881784197001252e-16,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-1.00*tau_a",
+    "+1.00*g_bb"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156
+   }
+  },
+  {
+   "topology": "efferent",
+   "observers": [
+    "bold",
+    "fast"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb"
+   ],
+   "rank": 4,
+   "n_params": 6,
+   "condition_number": 6.392922592163086e+31,
+   "singular_values": [
+    63.92922592163086,
+    0.7441326379776001,
+    0.273110568523407,
+    0.08100979030132294,
+    0.0,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "+1.00*g_bb",
+    "+1.00*tau_a"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "fast": 0.3333061734835307
+   }
+  },
+  {
+   "topology": "efferent",
+   "observers": [
+    "bold",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 1566.893074938133,
+   "singular_values": [
+    112.6063232421875,
+    22.388124465942383,
+    2.228252410888672,
+    0.7099009156227112,
+    0.09649135917425156,
+    0.0718659907579422
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "hr": 0.16627472639083862
+   }
+  },
+  {
+   "topology": "efferent",
+   "observers": [
+    "bold",
+    "fast",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 1486.6876677359414,
+   "singular_values": [
+    120.47937774658203,
+    41.31629943847656,
+    2.2319788932800293,
+    0.7396826148033142,
+    0.2799181640148163,
+    0.08103879541158676
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "fast": 0.3333061734835307,
+    "hr": 0.16627472639083862
+   }
+  },
+  {
+   "topology": "afferent",
+   "observers": [
+    "bold"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta_a",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta_a",
+    "g_bp"
+   ],
+   "rank": 5,
+   "n_params": 6,
+   "condition_number": 165841545404.62418,
+   "singular_values": [
+    56.16767501831055,
+    1.7636419534683228,
+    0.19910979270935059,
+    0.012455844320356846,
+    0.003964370582252741,
+    3.38682776268584e-10
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-0.71*beta_a +0.71*g_bp"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.018894650042057037
+   }
+  },
+  {
+   "topology": "afferent",
+   "observers": [
+    "bold",
+    "fast"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta_a",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta_a",
+    "g_bp"
+   ],
+   "rank": 5,
+   "n_params": 6,
+   "condition_number": 26706209644.383667,
+   "singular_values": [
+    96.02665710449219,
+    2.4978723526000977,
+    0.379151850938797,
+    0.12090954184532166,
+    0.026754459366202354,
+    3.5956677635340384e-09
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-0.71*beta_a +0.71*g_bp"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.018894650042057037,
+    "fast": 0.16627471645673117
+   }
+  },
+  {
+   "topology": "afferent",
+   "observers": [
+    "bold",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta_a",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta_a",
+    "g_bp"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 14513.82787569381,
+   "singular_values": [
+    89.56631469726562,
+    34.55229949951172,
+    2.6537413597106934,
+    0.5031558871269226,
+    0.042282361537218094,
+    0.006171102169901133
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.018894650042057037,
+    "hr": 0.33257649342219037
+   }
+  },
+  {
+   "topology": "afferent",
+   "observers": [
+    "bold",
+    "fast",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta_a",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta_a",
+    "g_bp"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 3072.7316482279566,
+   "singular_values": [
+    114.69242858886719,
+    46.137855529785156,
+    3.078596591949463,
+    0.5051360130310059,
+    0.22772838175296783,
+    0.03732588514685631
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.018894650042057037,
+    "fast": 0.16627471645673117,
+    "hr": 0.33257649342219037
+   }
+  },
+  {
+   "topology": "common",
+   "observers": [
+    "bold"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "beta_a"
+   ],
+   "active_gains": [
+    "beta",
+    "beta_a"
+   ],
+   "rank": 4,
+   "n_params": 6,
+   "condition_number": 3.234238815307617e+31,
+   "singular_values": [
+    32.34238815307617,
+    0.7127823233604431,
+    0.08542363345623016,
+    0.0258805975317955,
+    8.881784197001252e-16,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-1.00*tau_a",
+    "+1.00*beta_a"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156
+   }
+  },
+  {
+   "topology": "common",
+   "observers": [
+    "bold",
+    "fast"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "beta_a"
+   ],
+   "active_gains": [
+    "beta",
+    "beta_a"
+   ],
+   "rank": 4,
+   "n_params": 6,
+   "condition_number": 6.392922592163086e+31,
+   "singular_values": [
+    63.92922592163086,
+    0.7441326379776001,
+    0.273110568523407,
+    0.08100979030132294,
+    0.0,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "+1.00*beta_a",
+    "+1.00*tau_a"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "fast": 0.3333061734835307
+   }
+  },
+  {
+   "topology": "common",
+   "observers": [
+    "bold",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "beta_a"
+   ],
+   "active_gains": [
+    "beta",
+    "beta_a"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 3008.022459469691,
+   "singular_values": [
+    77.84941864013672,
+    32.34238815307617,
+    2.18912935256958,
+    0.7127823233604431,
+    0.08542363345623016,
+    0.0258805975317955
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "hr": 0.33257649342219037
+   }
+  },
+  {
+   "topology": "common",
+   "observers": [
+    "bold",
+    "fast",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "beta_a"
+   ],
+   "active_gains": [
+    "beta",
+    "beta_a"
+   ],
+   "rank": 6,
+   "n_params": 6,
+   "condition_number": 960.9877812369228,
+   "singular_values": [
+    77.84941864013672,
+    63.92922592163086,
+    2.18912935256958,
+    0.7441326379776001,
+    0.273110568523407,
+    0.08100979030132294
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.026223746438821156,
+    "fast": 0.3333061734835307,
+    "hr": 0.33257649342219037
+   }
+  },
+  {
+   "topology": "loop",
+   "observers": [
+    "bold"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "rank": 6,
+   "n_params": 7,
+   "condition_number": 27548411.53848387,
+   "singular_values": [
+    36.07791519165039,
+    1.7224236726760864,
+    0.38207295536994934,
+    0.07356221973896027,
+    0.039674997329711914,
+    0.0033326365519315004,
+    1.309618710365612e-06
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-0.71*g_bb +0.71*g_bp"
+   ],
+   "loop_gain": 0.25,
+   "noise_sd": {
+    "bold": 0.028963138659795124
+   }
+  },
+  {
+   "topology": "loop",
+   "observers": [
+    "bold",
+    "fast"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "rank": 6,
+   "n_params": 7,
+   "condition_number": 30282959.04147015,
+   "singular_values": [
+    77.5658187866211,
+    2.710681200027466,
+    0.5556190609931946,
+    0.1899200677871704,
+    0.08468962460756302,
+    0.03387618437409401,
+    2.561368546594167e-06
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-0.71*g_bb +0.71*g_bp"
+   ],
+   "loop_gain": 0.25,
+   "noise_sd": {
+    "bold": 0.028963138659795124,
+    "fast": 0.4432864586512248
+   }
+  },
+  {
+   "topology": "loop",
+   "observers": [
+    "bold",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "rank": 7,
+   "n_params": 7,
+   "condition_number": 3079.5976236759534,
+   "singular_values": [
+    142.99916076660156,
+    19.013561248779297,
+    3.435445547103882,
+    0.9505137205123901,
+    0.2131885290145874,
+    0.0785374790430069,
+    0.04643436521291733
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.25,
+   "noise_sd": {
+    "bold": 0.028963138659795124,
+    "hr": 0.22114078203837076
+   }
+  },
+  {
+   "topology": "loop",
+   "observers": [
+    "bold",
+    "fast",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_z",
+    "tau_a",
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "active_gains": [
+    "beta",
+    "g_bb",
+    "g_bp"
+   ],
+   "rank": 7,
+   "n_params": 7,
+   "condition_number": 2273.248630122643,
+   "singular_values": [
+    155.29054260253906,
+    37.582366943359375,
+    3.6506588459014893,
+    1.1514731645584106,
+    0.4261322319507599,
+    0.1231590285897255,
+    0.06831216812133789
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.25,
+   "noise_sd": {
+    "bold": 0.028963138659795124,
+    "fast": 0.4432864586512248,
+    "hr": 0.22114078203837076
+   }
+  },
+  {
+   "topology": "measurement",
+   "observers": [
+    "bold"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_a",
+    "beta_a",
+    "beta_vasc"
+   ],
+   "active_gains": [
+    "beta_a",
+    "beta_vasc"
+   ],
+   "rank": 3,
+   "n_params": 5,
+   "condition_number": 2.290701675415039e+31,
+   "singular_values": [
+    22.90701675415039,
+    0.6016250252723694,
+    0.09512074291706085,
+    0.0,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-1.00*tau_a",
+    "+1.00*beta_a"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.02622465540965398
+   }
+  },
+  {
+   "topology": "measurement",
+   "observers": [
+    "bold",
+    "fast"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_a",
+    "beta_a",
+    "beta_vasc"
+   ],
+   "active_gains": [
+    "beta_a",
+    "beta_vasc"
+   ],
+   "rank": 3,
+   "n_params": 5,
+   "condition_number": 2.290701675415039e+31,
+   "singular_values": [
+    22.90701675415039,
+    0.6016250252723694,
+    0.09512074291706085,
+    0.0,
+    0.0
+   ],
+   "is_identifiable": false,
+   "flat_directions": [
+    "-1.00*tau_a",
+    "+1.00*beta_a"
+   ],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.02622465540965398,
+    "fast": 1.0
+   }
+  },
+  {
+   "topology": "measurement",
+   "observers": [
+    "bold",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_a",
+    "beta_a",
+    "beta_vasc"
+   ],
+   "active_gains": [
+    "beta_a",
+    "beta_vasc"
+   ],
+   "rank": 5,
+   "n_params": 5,
+   "condition_number": 818.4272811937755,
+   "singular_values": [
+    77.84941101074219,
+    22.90701675415039,
+    2.1891322135925293,
+    0.6016250252723694,
+    0.09512074291706085
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.02622465540965398,
+    "hr": 0.33257649342219037
+   }
+  },
+  {
+   "topology": "measurement",
+   "observers": [
+    "bold",
+    "fast",
+    "hr"
+   ],
+   "names": [
+    "kappa",
+    "tau",
+    "tau_a",
+    "beta_a",
+    "beta_vasc"
+   ],
+   "active_gains": [
+    "beta_a",
+    "beta_vasc"
+   ],
+   "rank": 5,
+   "n_params": 5,
+   "condition_number": 818.4272811937755,
+   "singular_values": [
+    77.84941101074219,
+    22.90701675415039,
+    2.18913197517395,
+    0.6016250252723694,
+    0.09512074291706085
+   ],
+   "is_identifiable": true,
+   "flat_directions": [],
+   "loop_gain": 0.0,
+   "noise_sd": {
+    "bold": 0.02622465540965398,
+    "fast": 1.0,
+    "hr": 0.33257649342219037
+   }
+  }
+ ]
+}
