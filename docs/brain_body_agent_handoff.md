@@ -98,6 +98,23 @@ regression coverage. `git diff --check` and script compilation also pass.
 4. `neural_inputs` wiring in `eeg_fmri_statespace` remains partial. E/I dependency
    decision is untouched; `vbjax` is not installed by this work.
 5. DMT data request remains a draft; no message has been sent.
+6. Recorded-data test bed (2026-10-13): the recorded-run model
+   (`eeg_fmri_statespace.py`, not `brain_body.py`) has now run on six NATVIEW
+   resting subjects with six arms each (`docs/results/natview_rest_sub01-06.csv`;
+   per-subject JSON under `~/Workspace/data/vpjax_results/natview/`, sub-01 as
+   `_v4`, sub-02..06 as `_v3`). Respiration as a *vascular input* is supported in
+   5/6 (LR 16–42 for 2 df, loading 18–28% SE, negative in 4, lag 4.5–36 s;
+   sub-01, the original one-subject table, is the null exception); respiration
+   as an *observation of the neural drive* is degenerate in 6/6 (noise floor,
+   non-white innovations). That is a real-data vote for respiration on the
+   vasculature's input side, i.e. the measurement/afferent cells, not the
+   common-drive cell. The alpha loading sign is subject-dependent on NATVIEW
+   (negative sub-01, positive sub-02/03) unlike ds003768 (16/18 negative).
+   `brain_body.py` itself has still never been fitted to a recording; the NIMH
+   deep-breath sessions under `~/Workspace/data/nimh_bolt/` are the intended
+   first case (needs a loader) and that build awaits the user's go. QC: NATVIEW
+   sub-04's ECG is unusable (R-peak detector at its RR floor), so its EEG arms
+   are not evidence; sub-02's 44 bpm is genuine.
 
 Longer topology confusion matrices were reported to take about 75 minutes with
 three channels and 6.5 hours with BOLD+HR on this laptop. The new initialization

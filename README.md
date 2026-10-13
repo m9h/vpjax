@@ -419,26 +419,71 @@ was forced by a failure mode the recordings produced). Six subjects, one
 `scripts/validate_natview_statespace.py` does the same on NKI NATVIEW
 (Telesford et al. 2023; 64-channel EEG, EyeLink pupil, respiration belt,
 all put on one clock through the scanner triggers each stream recorded,
-`validation/natview.py`). On one resting run (`docs/results/natview_sub01_rest.csv`):
+`validation/natview.py`). Six resting runs, global BOLD, six arms each
+(`docs/results/natview_rest_sub01-06.csv`; the earlier one-subject table
+with pupil is `docs/results/natview_sub01_rest.csv`). Respiration enters
+either as an *observation* of the shared drive (`respiration`) or as a
+*vascular input* acting on the flow signal through a first-order lag
+(`~respiration`), and the two formulations behave very differently:
 
-| arm | drive τ_z | loading on drive | sign margin |
+| subject | alpha loading (sign margin) | respiration as vascular input: β, lag, LR vs BOLD-only | respiration as drive observation |
 |---|---|---|---|
-| alpha envelope | 9.2 s | −3.9 ± 29% | 6.3 |
-| pupil area | 15.1 s | −18.0 ± 20% | 9.6 |
-| envelope + pupil | 9.6 s | eeg −3.8 ± 31%, pupil 0.97 ± 124% | 10.7 |
-| respiration as a vascular input | 9.5 s | β ≈ 0 ± 200% | 0.4 |
+| sub-01 | −3.9 ± 29% (6.2) | 0.003 ± 200%, 4.5 s, LR 0.8 | floored, lag-1 +0.46 |
+| sub-02 | +12.5 ± 29% (7.3) | +0.007 ± 21%, 0.06 s (lag ± 260%), LR 29 | floored, lag-1 +0.09 |
+| sub-03 | +4.3 ± 10% (6.8) | −0.019 ± 28%, 4.5 s, LR 16 | floored, lag-1 +0.41 |
+| sub-04 | null (ECG detection failed, see below) | −0.017 ± 26%, 28 s, LR 34 | floored, lag-1 +0.37 |
+| sub-05 | +3.2 ± 55% (1.3) | −0.018 ± 27%, 8.1 s, LR 17 | floored, lag-1 +0.33 |
+| sub-06 | null (+0.8 ± 226%) | −0.025 ± 18%, 36 s, LR 42 | floored, lag-1 +0.60 |
 
-Pupil is the strongest single fast channel on this run — a 15 s arousal
-process with a large negative loading (dilation with BOLD decrease) — and
-the envelope couples to a faster 9 s process at a third of the strength.
-Jointly the envelope keeps the drive and the pupil's loading goes to
-zero: one latent state cannot be both. That argues for a second, slower
-arousal drive alongside the neural one, which is the next structural
-step and will be taken once more subjects say the pattern holds.
-Breathing depth did not drive global BOLD on this run; the vascular-input
-pathway exists because the motor-strip BOLD on ds003768 carries as much
-power near Nyquist as below 0.08 Hz — respiration aliased at TR 2.1 s —
-and a faster TR samples it directly.
+- **Breathing depth drives global BOLD through the vasculature in five of
+  six subjects.** The vascular-input arm beats BOLD-only by 16–42
+  log-likelihood units for two parameters, with the loading determined to
+  18–28%; the sign is negative (deeper breathing, lower BOLD, the
+  Birn/Chang respiration-volume response) in four, positive with an
+  unresolved lag in sub-02, and null in sub-01 — the subject the earlier
+  single-run table was built on. The lag runs from 4.5 to 36 s and is
+  not a constant across people.
+- **The respiration and alpha terms explain different variance.** Adding
+  the vascular input to the EEG arm gains the same 15–38 units it gains
+  over BOLD-only, and the alpha loading does not move (sub-02 12.5 → 10.5,
+  sub-03 4.3 → 5.1, sub-05 3.2 → 4.9, sub-01 unchanged).
+- **Respiration is not a readout of the neural drive.** As an observation
+  of the shared drive its noise variance collapses to the floor in all
+  six subjects and its innovations are not white (lag-1 0.33–0.60 in
+  five), i.e. the shared drive plus a nuisance state cannot carry it.
+  On the brain–body topology question this is a real-data vote for
+  respiration on the *input* side of the vasculature, not the
+  common-drive side; `docs/brain_body_system_models.md` has the
+  simulation counterpart.
+- **The alpha loading sign is not a constant across subjects.** It is
+  negative on sub-01 (margin 6.2), positive on sub-02 and sub-03
+  (margins 7.3 and 6.8), weakly positive on sub-05 and null on the other
+  two, against negative in 16 of 18 arms on ds003768. A free loading
+  sign is therefore not a stable quantity on global BOLD at rest, which
+  is the argument in `docs/ei_autonomic_coupling_plan.md` for deriving
+  the sign from a circuit model instead of fitting it.
+- **Nothing with a vascular input is identifiable by the curvature
+  criterion** on any subject at TR 2.1 s and 10 minutes; the only
+  "identifiable" arms are the degenerate respiration-observation ones.
+  The earlier conclusion stands: identifiability needs a regional pairing
+  or a real drive, not more streams on the global mean.
+
+QC from the same batch: the BCG detector's heart rate is confirmed by the
+ECG spectral fundamental on sub-02 (44 bpm, RR 1.12–1.48 s — a genuinely
+slow resting heart, not a detector error) but not on sub-04 (detector
+115 bpm with RR piling up at the 0.4 s floor and rr_cv 0.35; the ECG
+channel is unusable), so sub-04's BCG subtraction was locked to spurious
+peaks and its EEG arms (envelope noise variance ≈ 1) are not evidence of
+anything. On sub-01 and sub-06 the cardiac fundamental sits at 0.95 Hz,
+which is also the second harmonic of the TR; the RR spread says it is
+cardiac, but rate alone cannot separate the two.
+
+The one-subject pupil result still stands on its own: pupil is the
+strongest single fast channel on sub-01 — a 15 s arousal process with a
+large negative loading — and jointly with the envelope one latent state
+cannot be both, which is the argument for a second, slower arousal drive
+alongside the neural one. Pupil was not in this batch (valid fraction
+0.09–0.78 on three of the five new subjects).
 
 ### Can a drug that only adds noise fake a drug effect?
 
