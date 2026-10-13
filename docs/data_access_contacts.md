@@ -50,7 +50,7 @@ mega-analysis.
 | **DMT EEG-fMRI, n=20** (Timmermann et al. 2023 PNAS, <https://doi.org/10.1073/pnas.2218949120>) | Christopher Timmermann; Robin Carhart-Harris as senior author | `cbt14@ic.ac.uk` (from the release repo) — **likely stale**: 2025-26 papers list him at UCL Psychology and at Exeter Psychology, not Imperial | the public release is band-passed and HRF-convolved; see below |
 | same dataset's **EKG** | Lorenzo Pasquini, UCSF Neurology/Neuroscape | no email verified; UCSF Neurology | he has already published on it — see the next section |
 | **Psilocybin 2012 (n=15)**, and the 4 LSD 2016 participants not in ds003059, Imperial | Robin Carhart-Harris | `r.carhart-harris@imperial.ac.uk` is the 2016 address and is **stale**; he is at UCSF Neurology / Neuroscape | senior author on both; a search summary attributed an "available on request from Carhart-Harris" statement to a 2025 paper from the group, which I did not verify against the paper |
-| **PsiConnect, n=62 psilocybin** (Monash), multi-echo fMRI + EEG + diffusion, resting plus guided meditation, music and movie, half the cohort meditation-trained, follow-up to one year. <https://doi.org/10.1038/s41597-026-07312-1> | Adeel Razi, Monash | `adeel.razi@monash.edu` | OpenNeuro **ds006110** / NEMAR **on006110**. The largest single-site psychedelic dataset, and the only big one with EEG. **Unconfirmed whether the EEG is simultaneous with fMRI or a separate session** — worth one email before anything else |
+| **PsiConnect, n=62 psilocybin** (Monash), multi-echo fMRI + EEG + diffusion, resting plus guided meditation, music and movie, half the cohort meditation-trained, follow-up to one year. <https://doi.org/10.1038/s41597-026-07312-1> | Adeel Razi, Monash | `adeel.razi@monash.edu` | OpenNeuro **ds006110** / NEMAR **on006110**. The largest single-site psychedelic dataset, and the only big one with EEG. **Checked 2026-10-12: the EEG is not simultaneous.** The cap is an actiCAP slim 64 (not an MR cap) at 500 Hz, each session holds one continuous `task-series` EEG file covering movie/rest/meditation/music, and the Nature paper describes separate EEG blocks. No physiology in the func directories. Still the best open drug dataset for a different reason: TR 0.91 s, MB4, **four echoes**, so the breathing band is inside the sampled range and an S0/T2* split is available |
 | **ds006072 descriptor / replication sessions** (<https://doi.org/10.1038/s41597-025-05189-0>) | Subha Subramanian (corresponding); Joshua Siegel; Nico Dosenbach | `ssubram5@bidmc.harvard.edu`; `Joshua.Siegel@nyulangone.org` (current; `jssiegel@wustl.edu` was the 2024 address) | Siegel and Dosenbach are now both at the NYU Langone Center for Psychedelic Medicine |
 | **Psilocybin n=23 (2020)** and **LSD n=25 (2018)**, Zurich | Katrin Preller; Franz Vollenweider | none verified; Dept of Adult Psychiatry and Psychotherapy, University of Zurich | checked 2026-10-11: the Bitbucket deposit for Preller et al. 2018 eLife (`katrinpreller/lsd-effects-on-global-brain-connectivity`, under Downloads) holds only two CIFTI files of per-scan global-brain-connectivity maps (24 subjects × 6 scans, with and without GSR; one value per grayordinate, no time series). The licence is non-commercial academic use. It is derived data and cannot be fitted; the raw data must be requested |
 | **Psilocybin n=50**, Maastricht | Natasha Mason; Pablo Mallaroni; Johannes Ramaekers; Kim Kuypers | none verified; Dept of Neuropsychology and Psychopharmacology, Maastricht | |
@@ -111,6 +111,42 @@ modelling, and one of those was filtered upstream of the people who
 shared it. Publishing the parcellated series one step before the
 band-pass, and the regressors before convolution, preserves every
 downstream option at no cost to the original analysis.
+
+## Method test beds: drug-free simultaneous EEG-fMRI with physiology
+
+Added 2026-10-12. The brain-body simulations
+(`docs/brain_body_system_models.md`) say the fast channel is what makes
+the topology *selectable* and a peripheral channel is what makes the
+body pathway *identifiable*, so the method has to be exercised on
+recordings that carry both, on the imaging clock. None of the open drug
+datasets do. These drug-free ones do, and two are already on disk.
+
+| dataset | EEG | physiology | BOLD | n | status | use |
+|---|---|---|---|---|---|---|
+| **NIMH / Bolt et al.** (Nat Neurosci 2025, "Autonomic physiological coupling of the global fMRI signal"; preprint PMC11312447) | simultaneous, supplied **preprocessed** (.mat; AAS + BCG template + ICA in Analyzer, ref FCz) | **PPG + respiration**, trimmed to the scan | multi-echo, 3 echoes | rest 11 subj / 15 scans; **cued deep-breath task** 6 subj / 9 scans; cue-plus-button control | figshare `10.6084/m9.figshare.28225415.v3`, CC BY 4.0, 262 files, **14.0 GB**; code `github.com/tsb46/fmri_arousal` | the deep-breath task is a **body-first perturbation with experimenter-known timing** and the button task is its brain-first control: the closest existing thing to the two drug-free conditions in our design. TR not stated in the record |
+| **NATVIEW** (Telesford et al., Sci Data 2023, `10.1038/s41597-023-02458-8`) | simultaneous, 64 ch, 5 kHz, SyncBox to the MR clock | **ECG = EEG ch 32; respiration belt** (BIOPAC MP150, 62.5 Hz, `StartTime 0` against the scan trigger); eye tracking 250 Hz | TR 2.1 s, 3.5 mm, no multiband (12-ch coil) | 22, two sessions | FCP-INDI S3 `s3://fcp-indi/data/Projects/NATVIEW_EEGFMRI/raw_data/<sub>/<ses>/` per file (no-sign-request), or `raw_data_gz/<sub>.tar.gz` at 3.5-9.6 GB each; CC BY 4.0. **`~/Workspace/data/natview`**: sub-01 ses-01 rest (849 MB) plus whatever the 2026-10-13 pull added; `scripts/validate_natview_statespace.py` fits BOLD / EEG / pupil / respiration arms; results in `~/Workspace/data/vpjax_results/natview/` | rest 600 s; film runs 300-600 s (`inscapes`, `tp` = *The Present*, `dme` = Despicable Me, `monkey`) are a brain-first perturbation with a known onset; per-subject respiration and ECG on one clock |
+| **ds003768** (Gu, Han, ... Duyn, Liu, Penn State) | simultaneous, 32 ch, 5 kHz | **ECG = ch 32**, EOG ch 31; no respiration | TR 2.1 s | 33 | OpenNeuro, CC0. **`~/Workspace/data/openneuro/ds003768` holds sub-01..06 (3.0 GB)**; fits for six subjects x three ROIs in `docs/results/ds003768_rest_run1_sub01-06.csv` and `~/Workspace/data/vpjax_results/ds003768/` | two 10-min rest runs plus 15-min sleep runs with staged epochs in `sourcedata/`; the accompanying paper is about autonomic-neural sequences at arousals |
+| **ds007216** (Kucyi, Drexel) | simultaneous, 31 ch + 4 CWL, 5 kHz | **ECG = ch 32**; no respiration | TR 2.0 s, MB3, 2 mm | 24, two sessions, ~80 min each | OpenNeuro, open; not downloaded | the only one at our TR with CWL; derivatives include Bergen + CW-regressed EEG |
+
+What the two on-disk sets have already shown (README, "On a recording"):
+BOLD alone reproduces the simulation's pathology on real data; the alpha
+loading comes out negative in 16 of 18 fits; and in the well-determined
+subjects the joint fit pulls `tau_z` to 0.5 s, the envelope's own
+timescale, because at TR 2.1 s BOLD cannot object. That is the reason to
+prefer a short-TR dataset for the shared-timescale question, and why
+PsiConnect's 0.91 s would have mattered had its EEG been simultaneous.
+
+**Searched and not found** (2026-10-12): no open simultaneous EEG-fMRI
+dataset with a pharmacological condition -- ketamine (an Auckland thesis
+and an ANZCTR registration, no deposit), propofol or sevoflurane (TUM and
+Hospital del Mar registrations, no deposit), caffeine, nicotine,
+zolpidem, methylphenidate, alcohol. The Imperial DMT study remains the
+only drug recording with all three channels, and it needs the request
+above.
+
+Suggested order: NATVIEW beyond sub-01 (on disk, respiration + ECG + a
+film block, script exists); then the NIMH deep-breath task as the
+body-first condition; then the DMT request.
 
 ## Adjacent: the CWL datasets
 
