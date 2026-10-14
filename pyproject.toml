@@ -30,6 +30,10 @@ nlme = [
     "numpyro>=0.15",
     "optax>=0.1.9",
 ]
+# Linearised E/I field (gnf-jax) as a state-space latent block: vpjax.neural
+ei = [
+    "gnf-jax @ git+https://github.com/m9h/gnf-jax.git",
+]
 angiography = [
     "scikit-image>=0.20",
     "scipy>=1.10",
@@ -54,6 +58,7 @@ dev = [
     "scipy>=1.10",
     "mne>=1.6",
     "nibabel>=5.0",
+    "gnf-jax @ git+https://github.com/m9h/gnf-jax.git",
 ]
 doc = [
     "sphinx>=7.0",

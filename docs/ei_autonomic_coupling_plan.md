@@ -118,7 +118,30 @@ exercised by the PSD-fitting examples.
   observation are rebuilt per `theta` inside a `build(theta)` closure, so any
   new parameter must be threaded through `_FIT_NAMES` / `param_names` as well.
 
-## The one open architectural decision
+## The architectural decision (taken 2026-10-13: option 4)
+
+**Decision: the latent E/I block is the linearised graph Wilson-Cowan field of
+gnf-jax (`m9h/gnf-jax`, MIT, a JAX port of Aqil's model), wrapped in
+`vpjax/neural/ei_block.py` and installed through the `ei` extra. Option 3 is
+kept only for deriving the two-band loading vector offline; options 1 and 2 are
+dropped.** The reasoning: each Laplacian eigenmode of the linearised field is a
+two-state Ornstein-Uhlenbeck block, so it drops into the local-linearisation
+filter as an exact linear-Gaussian latent with gradients through every
+parameter and no neural-mass ODE code in vpjax; the E and I spectra are
+closed-form functions of the same fitted parameters, so the EEG band observable
+is derived rather than a free sign (`band_power` in the adapter); and an
+external time course enters at a named entry point (`p`, `q` or a coupling
+gain), linearised about the steady state, which is the framing constraint
+satisfied. Two limits, which are why option 3 survives: with a single region
+(`eigs = [0.]`) only the constant mode remains, so the field's spatial structure
+is absent until a graph is supplied; and a linearised two-state oscillator has
+one resonance per mode and cannot by itself produce the opposite-sign
+theta/gamma pattern of `ei_spectral_observable.md`. The two-band prediction
+therefore still comes from a circuit run (Jansen-Rit or Neymotin-type), and the
+block supplies the latent dynamics and a resonance/instability readout.
+
+The options as they stood before the decision, kept for the record:
+
 
 vpjax does not depend on vbjax: zero imports, and vbjax is absent from
 `pyproject.toml`. The styles differ — vbjax uses `namedtuple` parameters with
@@ -145,6 +168,20 @@ Option 3 is the cheapest route to the result that matters, since the deliverable
 is the loading vector and the sizing curve rather than a joint circuit fit.
 Option 1 is the right end state if the E/I parameters are ever to be fitted
 jointly with the haemodynamics.
+
+4. **gnf-jax as the latent block** (chosen; see above). `vpjax.neural.linear_ei_block`
+   linearises on any set of Laplacian eigenvalues, `statespace_spec` returns the
+   filter's `f`/`Q`/`m0`/`P0`, `EIBlock.input_vector(entry)` is the linearised
+   gain of an external time course at a named entry point, and
+   `band_power` is the derived band observable. Tests in
+   `vpjax/tests/test_ei_block.py` check the Lyapunov identity, that the spectrum
+   integrates to the stationary variance, that a uniform input enters only the
+   constant mode, that the band power is differentiable in the inhibitory gain,
+   and that the filter's likelihood peaks at the generating time constant.
+   Not yet done: composing the block with the Balloon in
+   `eeg_fmri_statespace.py` (replace `z` by a loading over the E modes), and
+   supplying a graph for the datasets on disk (see the connectome note in the
+   handoff).
 
 ## Build order
 

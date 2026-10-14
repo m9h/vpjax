@@ -115,6 +115,18 @@ regression coverage. `git diff --check` and script compilation also pass.
    first case (needs a loader) and that build awaits the user's go. QC: NATVIEW
    sub-04's ECG is unusable (R-peak detector at its RR floor), so its EEG arms
    are not evidence; sub-02's 44 bpm is genuine.
+7. E/I architecture decided (2026-10-13, user chose option 4): gnf-jax is the
+   latent E/I block, wrapped in `vpjax/neural/ei_block.py` (extra `ei`;
+   installed in `.venv` from `git+https://github.com/m9h/gnf-jax.git`, its own
+   28 tests pass under jax 0.11). `docs/ei_autonomic_coupling_plan.md` records
+   the decision and what remains: compose with the Balloon in
+   `eeg_fmri_statespace.py`, and supply a graph. On graphs: every local dataset
+   (NATVIEW, ds003768, NIMH/Bolt) ships a T1w and none ships diffusion, so a
+   subject-specific *tractography* connectome is not available; the options
+   are per-subject geometric eigenmodes from the FreeSurfer cortical surface
+   (T1w suffices; the pinned FreeSurfer container on this Mac can run it) or a
+   group template connectome parcellated to the ROI set. Aqil's own repository
+   ships no connectome, only per-subject fitted parameters from HCP DTI.
 
 Longer topology confusion matrices were reported to take about 75 minutes with
 three channels and 6.5 hours with BOLD+HR on this laptop. The new initialization
