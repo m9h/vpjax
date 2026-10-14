@@ -148,6 +148,17 @@ Suggested order: NATVIEW beyond sub-01 (on disk, respiration + ECG + a
 film block, script exists); then the NIMH deep-breath task as the
 body-first condition; then the DMT request.
 
+## Connectome and receptor priors (pulled 2026-10-14)
+
+See `docs/connectome_receptor_priors.md` for the full record. In short: the
+group multiscale structural connectome of Xia et al. 2026 on HCP-MMP1.0 (CC BY
+4.0 via Zenodo 10.5281/zenodo.20558532) is at `~/Workspace/data/msfd_gsp/`; the
+Hansen et al. 2022 serotonin PET maps (CC BY-NC-SA 4.0) at
+`~/Workspace/data/hansen_receptors/`; the HCP-MMP fsaverage annotations
+(CC BY 4.0) at `~/Workspace/data/hcp_mmp_fsaverage/`. Raw HCP needs the user's
+own registration; MICA-MICs (OSF j532r) is public and not yet pulled. Derived
+tables are in `docs/results/receptor_hcp_mmp.{csv,json}`.
+
 ## Adjacent: the CWL datasets
 
 Not psychedelic, but they settle the carbon-wire-loop question that feeds

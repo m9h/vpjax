@@ -127,6 +127,18 @@ regression coverage. `git diff --check` and script compilation also pass.
    (T1w suffices; the pinned FreeSurfer container on this Mac can run it) or a
    group template connectome parcellated to the ROI set. Aqil's own repository
    ships no connectome, only per-subject fitted parameters from HCP DTI.
+8. Graph and entry-pattern priors (2026-10-14): `vpjax/neural/connectome.py`
+   loads the Xia 2026 group connectome (HCP-MMP1.0, 360 regions) and builds
+   Laplacian modes; `scripts/receptor_modes.py` puts the Hansen 2022 serotonin
+   PET maps on the same parcels and modes (`docs/results/receptor_hcp_mmp.*`).
+   Decision recorded in `docs/connectome_receptor_priors.md`: use the sparse
+   tractography matrix (`SC`) for gnf-jax kernels, since the fused matrix is
+   near-complete and spectrally degenerate; 5-HT1A is the primary 5-MeO target
+   (ChEMBL CHEMBL7257) and enters the block as a negative drive perturbation
+   with the 1A map's modal weights, 2A as a positive one with the 2A map's.
+   Still to do: map a dataset's BOLD onto the same parcels (needs each
+   subject's T1w through FreeSurfer or an MNI-space HCP-MMP volume), then the
+   multi-mode E/I block on real data.
 
 Longer topology confusion matrices were reported to take about 75 minutes with
 three channels and 6.5 hours with BOLD+HR on this laptop. The new initialization

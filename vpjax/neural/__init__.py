@@ -7,6 +7,7 @@ optional dependency (``vpjax[ei]``); importing this subpackage without it
 raises a clear error rather than failing at the first call.
 """
 
+from vpjax.neural import connectome  # noqa: F401
 from vpjax.neural.ei_block import (
     ENTRY_POINTS,
     EIBlock,
