@@ -139,6 +139,16 @@ regression coverage. `git diff --check` and script compilation also pass.
    Still to do: map a dataset's BOLD onto the same parcels (needs each
    subject's T1w through FreeSurfer or an MNI-space HCP-MMP volume), then the
    multi-mode E/I block on real data.
+9. Step 1c (2026-10-14, `docs/results/brain_body_confusion_fast_hr.json`, section in
+   `docs/brain_body_system_models.md`): EEG + heart rate, no BOLD. Afferent and loop
+   identified (25–53 dAIC); efferent/common tie as before, with the diagnosis that
+   `g_bb*z` and `beta_a*u` are the same regressor when EEG pins `z` — a brain-side
+   drive that is not the drug (frequency-tagged stimulus) separates them; the
+   measurement row ties everywhere because `beta_vasc` is unobservable without BOLD,
+   BUT the efferent fit of body-only data now reports a brain DC gain of 0.4–7.5%
+   (vs 94% with BOLD+HR), so the Step 1b misattribution does not occur. An
+   EEG-first study answers "did it reach the brain" and "did the body drive the
+   brain", not "did it act on the vasculature".
 
 Longer topology confusion matrices were reported to take about 75 minutes with
 three channels and 6.5 hours with BOLD+HR on this laptop. The new initialization
