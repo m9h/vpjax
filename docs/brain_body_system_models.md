@@ -547,6 +547,56 @@ labelled measurement would need BOLD to become informative, and nothing here
 changes Step 0's point that any peripheral channel is what makes the gains
 estimable in the first place.
 
+
+## Step 1 with a pharmacokinetic drive: the shape test survives a real time course
+
+Every Step 1 result above used a Bateman *shape* at the drive entry. The
+chain in `vpjax.pharmacokinetics` (dose → plasma → effect site → Hill
+occupancy) is now wired in: `vpjax/pharmacokinetics/drive.py` turns an
+assumptions file into an occupancy series on a seconds axis,
+`brain_body.simulate(drive="series")` takes it in place of the shape, and
+`scripts/brain_body_pk_drive.py` reruns the confusion matrix with it. The
+assumptions file is `examples/assumptions_synthetic.json`: a labelled
+synthetic two-compartment set with no compound behind it (its `source`
+field says so; the loader refuses a blank source). It gives a drive that
+peaks 188 s after dosing at occupancy 0.66, with
+a terminal half-life of 22 min, so on the 900 s run the unit-peak
+drive peaks at about 310 s and is still at 0.21 at the end, against the
+Bateman shape's peak at 256 s and 0.25 at the end: a later, slower input.
+
+Same settings as Step 1 otherwise (900 s, onset 120 s, three channels at
+SNR 3, three seeds, three restarts). Entries are median dAIC above the
+row's best, PK drive first and the Bateman shape in parentheses:
+
+| data \ fit | efferent | afferent | common | loop | measurement |
+|---|---|---|---|---|---|
+| efferent | 0.0 (0.0) | 50.3 (46.0) | 1.3 (3.0) | 1.9 (1.6) | 88.9 (46.3) |
+| afferent | 50.0 (50.7) | 0.0 (0.0) | 40.1 (40.1) | 32.2 (31.3) | 78.1 (77.0) |
+| common | 1.6 (3.1) | 77.4 (25.5) | 0.0 (0.0) | 3.6 (2.4) | 45.3 (39.4) |
+| loop | 23.1 (19.6) | 151.5 (71.5) | 67.3 (24.7) | 0.0 (0.0) | 129.0 (60.8) |
+| measurement | 152.7 (112.2) | 202.5 (126.9) | 117.9 (111.6) | 117.6 (113.1) | 0.0 (0.0) |
+
+The diagonal wins in every row with both drives. The structure of the
+matrix is the same: afferent and measurement are tens to hundreds of AIC
+units from everything else, and efferent, common and loop sit within a
+few units of each other, which is the pair-of-pairs Step 1 already
+identified as the study's real problem. The PK time course changes the
+margins (loop is better separated from common, 67 vs 25; efferent from
+common slightly less, 1.3 vs 3.0) but not the verdicts. So the shape was
+not doing the work: the identifiability and selectability results carry
+over to a drive with a pharmacokinetic time course.
+
+What this does not do: the PK parameters are not fitted jointly with the
+state-space model (the chain is forward-only, which is correct when the
+plasma curve is measured or taken from a cited population model and
+wrong when it is not); the drive enters the brain-body model's single
+drive entry, not the gnf-jax E/I block's receptor-weighted entries; and
+the recorded-run model in `eeg_fmri_statespace` still takes a shape. The
+absolute occupancy scale (peak 0.66 here) is folded into `beta`
+by the unit-peak normalisation and recorded in the output, so a fitted
+`beta` is the drive per unit of peak occupancy, not per unit of
+occupancy. Results: `docs/results/brain_body_confusion_pk_drive.json`.
+
 ## Scope
 
 No compound-specific parameters belong in any of this. As with

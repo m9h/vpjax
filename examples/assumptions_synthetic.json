@@ -1,0 +1,10 @@
+{
+  "units": {"time": "min", "volume": "L", "amount": "mg"},
+  "source": "SYNTHETIC ILLUSTRATION, NOT A COMPOUND: two-compartment parameters chosen so the effect-site drive rises over a few minutes and decays over roughly half an hour, matching the time scales of the brain-body test bed (scripts/brain_body_confusion.py defaults rise 60 s, decay 420 s). Replace every number with cited values before any use beyond the software test.",
+  "structure": {"n_peripheral": 1, "absorption": false},
+  "pk": {"CL": 2.0, "V1": 10.0, "Q2": 1.0, "V2": 20.0},
+  "regimen": {"kind": "infusion", "amount": 1.0, "duration": 1.0},
+  "pd": {"ke0": 0.5, "ec50": 0.03, "gamma": 1.5},
+  "duration": 40.0,
+  "dt": 0.01
+}

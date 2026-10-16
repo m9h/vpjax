@@ -240,6 +240,22 @@ occ = occupancy(ce, ec50=..., gamma=...)
 assumptions and records them in the output, so a downstream fit cannot
 be mistaken for an independent measurement of the PK.
 
+The chain is wired into the state-space test bed through
+`vpjax.pharmacokinetics.drive`: `effect_site_drive(assumptions)` returns
+the occupancy on a seconds axis and `drive_series_from_pk` evaluates it on
+a model grid (unit peak, so `beta` stays the peak drive), and
+`validation.brain_body.simulate(..., drive="series", series=...)` accepts
+it in place of the Bateman shape. `scripts/brain_body_pk_drive.py` reruns
+the Step 1 topology confusion with that drive
+(`docs/results/brain_body_confusion_pk_drive.json`). The shipped
+`examples/assumptions_synthetic.json` is a labelled synthetic set, not a
+compound; the `source` field is mandatory and the loader refuses a blank
+one. The closed-form solver is cross-checked in
+`vpjax/tests/test_pharmacokinetics.py` against the textbook one- and
+two-compartment bolus and infusion solutions and the exact effect-site
+step response (Gibaldi & Perrier; Rowland & Tozer), independently of the
+matrix-exponential propagator.
+
 ## Fusing EEG and fMRI: the State-Space Layer
 
 EEG and fMRI observe the same latent state at rates three orders of

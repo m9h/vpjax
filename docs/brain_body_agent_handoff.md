@@ -98,6 +98,16 @@ regression coverage. `git diff --check` and script compilation also pass.
 4. `neural_inputs` wiring in `eeg_fmri_statespace` remains partial. E/I dependency
    decision is untouched; `vbjax` is not installed by this work.
 5. DMT data request remains a draft; no message has been sent.
+5a. PK chain wired in (2026-10-15): `vpjax/pharmacokinetics/drive.py` turns an
+   assumptions JSON (mandatory cited `source`; `examples/assumptions_synthetic.json`
+   is a labelled synthetic set, not a compound) into an effect-site occupancy on a
+   seconds axis; `brain_body.simulate(drive="series", series=...)` takes it in
+   place of the Bateman shape; `scripts/brain_body_pk_drive.py` reruns the Step 1
+   confusion with it (`docs/results/brain_body_confusion_pk_drive.json`). The
+   closed-form PK solver is cross-checked against textbook one/two-compartment
+   solutions in the tests. Still NOT done: the PK drive into `eeg_fmri_statespace`
+   recorded-run fits, into the gnf-jax E/I block entries, and any fit of PK
+   parameters jointly with the state-space model (the chain is forward-only here).
 6. Recorded-data test bed (2026-10-13): the recorded-run model
    (`eeg_fmri_statespace.py`, not `brain_body.py`) has now run on six NATVIEW
    resting subjects with six arms each (`docs/results/natview_rest_sub01-06.csv`;

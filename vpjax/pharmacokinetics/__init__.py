@@ -133,3 +133,10 @@ __all__ = [
     "initial_guess",
     "default_fit_names",
 ]
+
+from vpjax.pharmacokinetics.drive import (  # noqa: E402
+    REQUIRED as ASSUMPTIONS_REQUIRED,
+    drive_series_from_pk,
+    effect_site_drive,
+    load_assumptions,
+)

@@ -412,3 +412,92 @@ class TestPopulation:
         )
         assert draws["obs"].shape[0] == 16
         assert jnp.all(jnp.isfinite(draws["pred"]))
+
+
+# ---------------------------------------------------------------------------
+# Reference closed forms (Gibaldi & Perrier 1982; Rowland & Tozer 2011), written
+# independently of the matrix-exponential solver, and the PK -> drive bridge.
+# ---------------------------------------------------------------------------
+
+def test_one_compartment_bolus_matches_textbook():
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    from vpjax.pharmacokinetics import ONE_COMPARTMENT, PKParams, bolus, concentration
+    CL, V, D = 3.0, 20.0, 100.0
+    t = jnp.linspace(0.0, 24.0, 97)
+    c = concentration(PKParams(CL=jnp.array(CL), V1=jnp.array(V)), bolus(D), t, ONE_COMPARTMENT)
+    ref = (D / V) * jnp.exp(-(CL / V) * t)
+    assert jnp.allclose(c, ref, rtol=1e-8, atol=1e-12)
+
+
+def test_one_compartment_constant_infusion_matches_textbook():
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    from vpjax.pharmacokinetics import ONE_COMPARTMENT, PKParams, concentration, infusion
+    CL, V, D, T = 3.0, 20.0, 60.0, 2.0
+    k, R = CL / V, D / T
+    t = jnp.linspace(0.0, 10.0, 401)
+    c = concentration(PKParams(CL=jnp.array(CL), V1=jnp.array(V)), infusion(D, T), t, ONE_COMPARTMENT)
+    during = (R / CL) * (1.0 - jnp.exp(-k * t))
+    after = (R / CL) * (1.0 - jnp.exp(-k * T)) * jnp.exp(-k * (t - T))
+    ref = jnp.where(t <= T, during, after)
+    assert jnp.allclose(c, ref, rtol=1e-7, atol=1e-10)
+
+
+def test_two_compartment_bolus_matches_biexponential():
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    from vpjax.pharmacokinetics import TWO_COMPARTMENT, PKParams, bolus, concentration
+    CL, V1, Q, V2, D = 2.0, 10.0, 1.0, 20.0, 1.0
+    k10, k12, k21 = CL / V1, Q / V1, Q / V2
+    s = k10 + k12 + k21
+    beta = 0.5 * (s - jnp.sqrt(s ** 2 - 4.0 * k10 * k21))
+    alpha = k10 * k21 / beta
+    A = (D / V1) * (alpha - k21) / (alpha - beta)
+    B = (D / V1) * (k21 - beta) / (alpha - beta)
+    t = jnp.linspace(0.0, 60.0, 301)
+    c = concentration(PKParams(CL=jnp.array(CL), V1=jnp.array(V1), Q2=jnp.array(Q), V2=jnp.array(V2)),
+                      bolus(D), t, TWO_COMPARTMENT)
+    ref = A * jnp.exp(-alpha * t) + B * jnp.exp(-beta * t)
+    assert jnp.allclose(c, ref, rtol=1e-8, atol=1e-12)
+
+
+def test_effect_site_step_response_is_exact():
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    from vpjax.pharmacokinetics import EffectSiteParams, effect_site_concentration
+    ke0, dt, n = 0.3, 0.05, 400
+    cp = jnp.ones(n)
+    ce = effect_site_concentration(cp, dt=dt, params=EffectSiteParams(ke0=jnp.array(ke0)))
+    t = jnp.arange(n) * dt
+    assert jnp.allclose(ce, 1.0 - jnp.exp(-ke0 * t), rtol=1e-10, atol=1e-12)
+
+
+def test_pk_drive_bridge_rejects_missing_source_and_feeds_brain_body():
+    import json, os, tempfile
+    import jax
+    jax.config.update("jax_enable_x64", True)
+    import numpy as np
+    import pytest
+    from vpjax.pharmacokinetics import drive_series_from_pk, effect_site_drive, load_assumptions
+    from vpjax.validation.brain_body import simulate
+    here = os.path.join(os.path.dirname(__file__), "..", "..", "examples", "assumptions_synthetic.json")
+    spec = load_assumptions(here)
+    bad = dict(spec, source="   ")
+    with pytest.raises(ValueError):
+        load_assumptions(bad)
+    with pytest.raises(ValueError):
+        load_assumptions({k: v for k, v in spec.items() if k != "pd"})
+    pk = effect_site_drive(spec)
+    assert 0.0 < pk["peak_occupancy"] <= 1.0
+    assert pk["drive"].shape == (1, pk["time_s"].size)
+    assert pk["metadata"]["source"] == spec["source"]
+    t = np.arange(0.0, 600.0, 1.0)
+    u = drive_series_from_pk(t, pk, onset_s=100.0)
+    assert u[:100].max() == 0.0 and abs(u.max() - 1.0) < 1e-3 and u[-1] > 0.0   # 1 s probe grid vs 0.6 s PK grid
+    series = (pk["time_s"], drive_series_from_pk(pk["time_s"], pk, onset_s=0.0))
+    sim = simulate("efferent", duration=300.0, dt=0.05, onset=60.0, drive="series", series=series, seed=0)
+    assert sim["drive"] == "series"
+    assert sim["u_fine"][: int(60 / 0.05) - 1].max() == 0.0
+    assert abs(sim["u_fine"].max() - 1.0) < 1e-6
+    assert np.isfinite(sim["bold"]).all() and np.isfinite(sim["hr"]).all()
