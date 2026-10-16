@@ -98,6 +98,20 @@ regression coverage. `git diff --check` and script compilation also pass.
 4. `neural_inputs` wiring in `eeg_fmri_statespace` remains partial. E/I dependency
    decision is untouched; `vbjax` is not installed by this work.
 5. DMT data request remains a draft; no message has been sent.
+5b. CSF-inflow / arousal control (reported by the hippy-feat session 2026-10-15, not
+   verified here): `jaxoccoli.csf_inflow` (Fultz 2019 edge-slice inflow, lagged
+   coupling to -dBOLD/dt) exports a `csf_inflow` stream alongside `bold_global`
+   and `fd` in `neurophys-observations/1` for NATVIEW (`/data/derivatives/
+   natview_csf/obs/sub-XX_rest.npz` on the DGX; results note
+   `hippy-feat/docs/natview_csf_inflow_results.md`). With the FreeSurfer fourth-
+   ventricle ROI the coupling is null across 22 subjects (r 0.005); the r 0.15
+   from an automatic edge-slice ROI is a lagged global-signal derivative
+   artefact. Expected causes: TR 2.1 s saturates inflow, slab not at the fourth
+   ventricle, 2–22 partial-volume voxels. Consequence for the protocol: the CSF/
+   arousal control exists only by acquisition design (short TR, bottom slice at
+   the fourth ventricle, ROI drawn on the EPI); it cannot be recovered from
+   standard rest data or from ds006072 (CIFTI only). Treat the NATVIEW stream as
+   a schema test, not data.
 5a. PK chain wired in (2026-10-15): `vpjax/pharmacokinetics/drive.py` turns an
    assumptions JSON (mandatory cited `source`; `examples/assumptions_synthetic.json`
    is a labelled synthetic set, not a compound) into an effect-site occupancy on a
