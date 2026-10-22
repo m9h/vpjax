@@ -6,6 +6,8 @@ The Step 0/1/1b baseline is commit `6115228`; subsequent periodic-perturbation
 work is in the commit containing this handoff. Use the repository `.venv`:
 system Python lacks the required numerical dependencies.
 
+- `docs/eeg_fmri_drug_study_review.md` (2026-10-21): what Timmermann 2023 / Pasquini 2025 obtained on the DMT EEG-fMRI set, the anaesthesia groups that ran hypothesis-driven drug EEG-fMRI (Tracey, TUM, Auckland, Winterer, Wise), the TVB-family precedents (Schirner hybrid, Deco receptor gain, Piccinini PK-Hopf, Angiolelli dopa model = vbjax `dopa_dfun`) and the four hypotheses H1-H4 the stack can test.
+
 ## First finding to carry forward
 
 The reported 479% SE for `g_bb` was a units error in the scratch probe.
