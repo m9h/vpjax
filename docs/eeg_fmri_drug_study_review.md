@@ -218,7 +218,188 @@ Each of these names an EEG quantity, an fMRI quantity, a direction, and a compet
 explanation, which is what the anaesthesia groups had and the psychedelic studies so far
 did not.
 
-## 4. What this note does not do
+
+## 4. Confounds of the time-resolved complexity measure, and the interpretable alternative
+
+The published time-resolved endpoint on the EEG side is Lempel-Ziv complexity (LZc),
+computed per sliding window and correlated with ratings and with regional fMRI
+connectivity. This section lists what LZc cannot separate, then what replaces it.
+
+A note on scope: LZc is a genuinely good *detector*. Its best-established property is that
+it orders wake, NREM, anaesthesia and disorders of consciousness consistently across labs
+and montages, which gives any new state a cross-state anchor to a large prior literature.
+Nothing below argues for dropping it. The argument is that it is the wrong *endpoint* for a
+study whose stated question has moved from "did a graded state occur" to "what changed in
+the tissue".
+
+### 4.1 The measure is largely a restatement of the spectrum
+
+LZc is computed on a binarised signal, normally the Hilbert amplitude envelope thresholded
+at its median, sometimes the raw trace at its mean. The run-length statistics of that binary
+string are governed by the threshold-crossing rate, which is set by the spectral centroid.
+A flatter aperiodic slope, less alpha, or more high-frequency power each raise LZc more or
+less mechanically.
+
+Mediano, Rosas, Barrett & Bor formalised this and gave the test: decompose any
+between-condition difference in a non-linear feature into a spectral part and a genuinely
+phase-dependent part, by comparing the observed difference against phase-randomised
+surrogates that preserve the amplitude spectrum (Phys Rev Lett 127, 124101, 2021,
+doi:10.1103/PhysRevLett.127.124101; arXiv:2009.10015). Applied to LZc across several
+datasets, a large share of the condition difference is spectral. This critique comes from
+inside the same methodological community, which makes it usable in a proposal without
+appearing adversarial.
+
+Consequence for the published result: reporting "alpha down, delta and gamma up" and then
+"LZc up" as separate findings is close to reporting one observation twice. The two are not
+independent evidence for an entropy account.
+
+Normalisation does not repair this. Dividing by a *shuffled* surrogate removes
+amplitude-distribution effects but not spectral ones. Dividing by a *phase-randomised*
+surrogate does remove the spectral part, but the resulting ratio has two biased estimators
+in it and much larger variance, which matters at n = 12.
+
+### 4.2 Broadband nuisance, and why the magnet makes it worse
+
+Because LZc rewards novel substrings, it rewards added broadband variance of any origin.
+The relevant sources in an EEG-fMRI run:
+
+- Scalp EMG (temporalis, frontalis, neck) spreads broadband above roughly 20 Hz and is the
+  classic contaminant of "gamma" and of every complexity measure built on it.
+- Saccadic spike potentials and microsaccades add brief broadband transients, with rates
+  that change with arousal and with eyes-closed restlessness.
+- Residual gradient artefact surviving average-artefact subtraction, which grows whenever
+  the head moves relative to its position at template formation.
+- Residual ballistocardiogram surviving ICA, which scales with heart rate and pulse
+  amplitude. The 2023 study carried only two ECG channels, for BCG correction alone.
+
+The structural problem is not that these exist. It is that each one moves in the *same
+direction* and on the *same time course* as the manipulation, because autonomic activation,
+muscle tone and small head movements all track the state. Head motion already differed
+between conditions in the published comparison (p = .003), and four of twenty subjects were
+excluded for motion. A nuisance correlated with the design cannot be regressed out after the
+fact without removing signal with it.
+
+### 4.3 Estimator bias in sliding windows
+
+LZ complexity converges to the entropy rate only asymptotically. In short windows its
+expectation depends on window length, sample rate and the binarisation rule, with a positive
+bias that decays slowly (order 1/log n). So a time-resolved LZc trace carries a bias
+trajectory of its own whenever effective window occupancy changes: artefact rejection,
+scrubbing, variable retained channel counts, drift in cap impedance over a long run. Any
+monotone decline in data quality across a session appears as a monotone change in
+"complexity". This is checkable and is rarely checked.
+
+### 4.4 It is an arousal detector
+
+The property that makes LZc valuable, consistent ordering across wake, sleep and
+anaesthesia, is exactly the property that makes it confounded here: it is highly sensitive
+to the arousal axis. Any manipulation that raises arousal raises LZc. Without an independent
+arousal regressor in the model (pupillometry, EOG-derived drowsiness, heart rate,
+respiratory rate), "complexity rose" and "subjects became more aroused" are not
+distinguishable. Zacharias et al. (2019, doi:10.1002/hbm.24791) showed precisely this
+failure mode for a prefrontal connectivity effect under S-ketamine.
+
+### 4.5 The two inferential steps built on it are weak
+
+**Complexity against ratings.** The time-resolved LZc trace and the rated intensity trace
+are both smooth and both approximately unimodal across the run. Correlating them over time
+inflates significance badly unless effective degrees of freedom are corrected for
+autocorrelation. Across subjects, a single retrospective summary rating against a run-summary
+LZc gives one point per subject; r = .70 at n = 12 has a 95% interval running from roughly
+.21 to .91.
+
+**Complexity against BOLD.** HRF-convolving the LZc trace and regressing it on regional
+global connectivity shares the drive with the BOLD time course, so the two series are
+correlated through the design regardless of any neural coupling. Separately, BOLD responds
+to arterial CO2, cardiac output and blood pressure, all of which move with the state. A
+positive LZc-BOLD coupling is therefore fully consistent with a systemic vascular path from
+the manipulation to both signals. With no respiratory, CO2 or beat-level cardiac measure in
+the BOLD model, that alternative cannot be tested. Pasquini's own finding that the
+hippocampal and medial parietal deactivation tracks the heart-rate change across subjects
+(r = .56) is direct evidence that this path is live in this dataset.
+
+### 4.6 No forward model, no units, no direction
+
+The decisive limitation. There is no mapping from a tissue-level parameter to a predicted
+LZc value. You cannot state what change in synaptic time constant, excitatory gain,
+inhibitory tone or conduction delay would produce a given ΔLZc, and you cannot invert one
+into the other. From this follow four things:
+
+- It cannot be compared on a common scale across montages, reference schemes, channel
+  counts, species or recording modalities.
+- It cannot constrain or be predicted by a biophysical model, so it cannot be falsified at
+  the mechanism level.
+- It is non-monotone in the underlying physiology: an E/I shift in *either* direction, added
+  broadband noise, and merely reduced oscillatory burstiness all raise it.
+- "Entropy increased" is therefore a redescription of the data, not an explanation of it.
+
+### 4.7 Variant proliferation
+
+LZ76 versus LZ78; LZc versus LZsum versus LZs; per-channel averaged versus
+channel-concatenated; Hilbert-envelope versus raw binarisation; shuffled versus
+phase-randomised normaliser. Different papers use the same word for different estimators,
+and effect sizes do not transfer between them. The same holds for "entropy" covering sample
+entropy, permutation entropy and context-tree weighting.
+
+### 4.8 The alternative: parameters with units instead of scalars without
+
+The move is to replace a summary statistic *of the data* with a parameter *of a generative
+model*, and to demote complexity from endpoint to validation target.
+
+1. **Fit a physiological spectral model.** A neural-mass or mean-field model fitted to the
+   sensor or source cross-spectrum reports a change in a rate constant, a synaptic gain, a
+   damping ratio or a conduction delay, each with a credible interval and a sign that means
+   something. `neurojax.bsd` `liley_mix2` does this; DCM for cross-spectral densities is the
+   established precedent. The decisive move is the last one: **simulate from the fitted model
+   and compute LZc on the simulation**. If the fitted parameter change reproduces the
+   observed complexity change, the complexity result is explained rather than contradicted.
+   That subsumes the existing finding instead of attacking it.
+
+2. **Separate aperiodic from periodic as the cheap floor.** A spectral-parametrisation
+   comparator (exponent, knee, peaks) splits the two things LZc conflates: broadband tilt and
+   narrowband power. Pre-register it as the descriptive baseline the generative model must
+   beat on free energy or held-out likelihood.
+
+3. **Add a driven response as the identifiability anchor.** Auditory steady-state, visual
+   tagging, paired-pulse or oddball. The input is known and chosen, so gain and phase are
+   measured at a frequency the experimenter owns; EMG and arousal do not sit at that
+   frequency, so the signal-to-nuisance ratio is structurally better than for any resting
+   broadband measure. A driven EEG response preserved while its BOLD counterpart changes is
+   the clean neural-versus-vascular dissociation (Diukova et al. 2012,
+   doi:10.1016/j.neuroimage.2012.04.041). Chuan Hou's dichoptic SSVEP work gives a ready
+   E/I-interpretable readout (see `reference_driven_eeg_paradigm_contacts`).
+
+4. **Model physiology as a pathway, not a covariate.** Beat-level ECG, respiration belt,
+   pulse oximetry, and end-tidal CO2 where the setup permits. The vascular input then enters
+   the BOLD model as its own pathway (the `brain_body` topologies), and the directed
+   brain-heart test asks whether a cardiac change is efferent or afferent, rather than
+   entering heart rate as a between-subject nuisance term after the fact.
+
+5. **Use a joint EEG+BOLD state-space likelihood.** One latent state, two observation
+   channels, one shared drive. Cross-modal coupling becomes a model parameter with an
+   identifiability check attached, not a correlation between two post-hoc summaries. The
+   vpjax result that the drive is non-identifiable from BOLD alone and identifiable once EEG
+   is added is itself the argument for in-bore EEG, and it does not depend on any complexity
+   measure being right.
+
+6. **Check identifiability before power.** FIM and profile-likelihood curvature on the design
+   grid, before any data exist.
+
+### 4.9 How to put this to the lab
+
+Complexity measures are excellent detectors and poor explanations. They were the correct
+instrument for the question the field actually had, which was whether a graded state occurred
+and whether it scaled with report. They are the wrong instrument for "what changed in the
+tissue", which is the question the lab says it now wants to ask.
+
+So the proposal is not to discard LZc. Keep it in three roles: as a manipulation check, as
+the cross-state anchor to the anaesthesia and sleep literature, and as a validation target
+the generative model is required to reproduce in simulation. Move the endpoint to a parameter
+that has units, a sign, a credible interval and a forward model. The spectral-versus-phasic
+decomposition is the honest first analysis to run on the existing data, because it tells you
+how much of the published complexity effect is left once the spectrum is accounted for, and
+that number sizes the whole argument.
+## 5. What this note does not do
 
 It does not request any data, and it does not propose dosing or pharmacokinetic values for
 any compound; PK/PD enter only as externally supplied, cited assumption files consumed by
